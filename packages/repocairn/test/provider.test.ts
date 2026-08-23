@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   OPENAI_BASE_URL,
   OPENROUTER_BASE_URL,
   resolveProvider,
+  structuredCall,
 } from "../src/llm.js";
 
 const PROVIDER_ENV_VARS = [
@@ -117,4 +119,22 @@ describe("resolveProvider", () => {
     withEnv({ ANTHROPIC_API_KEY: "a", REPOCAIRN_CLI_COMMAND: "claude -p" });
     expect(resolveProvider().provider).toBe("anthropic");
   });
+});
+
+describe("cli provider timeout", () => {
+  it("kills a hung subprocess and rejects instead of hanging forever", async () => {
+    withEnv({
+      REPOCAIRN_CLI_COMMAND: `node -e "setTimeout(()=>{}, 60000)"`,
+    });
+    vi.stubEnv("REPOCAIRN_CLI_TIMEOUT_MS", "100");
+
+    await expect(
+      structuredCall({
+        system: "s",
+        user: "u",
+        schema: z.object({ ok: z.boolean() }),
+        schemaName: "Ok",
+      }),
+    ).rejects.toThrow(/produced no output within 100ms/);
+  }, 10_000);
 });

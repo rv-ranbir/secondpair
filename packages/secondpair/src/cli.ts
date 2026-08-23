@@ -33,7 +33,7 @@ import {
   parseRepoSlug,
   type PrRef,
 } from "./diff/github.js";
-import { resolveGhRepoSlug, resolveGhToken } from "./github/auth.js";
+import { detectGhPrNumberFromEnv, resolveGhRepoSlug, resolveGhToken } from "./github/auth.js";
 import { getLocalDiff } from "./diff/local.js";
 import {
   getReviewState,
@@ -157,6 +157,14 @@ program
     const host = detectHost(opts.host);
     const bbPrAvailable = host === "bitbucket" && (opts.pr != null || process.env.BITBUCKET_PR_ID);
     const glMrAvailable = host === "gitlab" && (opts.pr != null || process.env.CI_MERGE_REQUEST_IID);
+    const ghPrNumber = host === "github" ? (opts.pr ?? detectGhPrNumberFromEnv() ?? undefined) : opts.pr;
+
+    // Fail loud immediately if --post can never be honored, instead of falling
+    // through to local-diff mode and possibly exiting 0 with no report on an
+    // empty diff — silently masking a misconfigured (missing --pr) invocation.
+    if (opts.post && !glMrAvailable && !bbPrAvailable && ghPrNumber == null) {
+      throw new Error("--post requires a PR (--pr, or Bitbucket/GitLab/GitHub Actions CI env vars).");
+    }
 
     let diffText: string;
     let changeDescription: string;
@@ -178,13 +186,13 @@ program
       log(`Fetching diff for ${bbRef.workspace}/${bbRef.repoSlug} PR #${bbRef.prId} (Bitbucket)…`);
       diffText = await getBbPrDiff(bbRef);
       changeDescription = `PR #${bbRef.prId} in ${bbRef.workspace}/${bbRef.repoSlug}`;
-    } else if (opts.pr != null) {
+    } else if (ghPrNumber != null) {
       const slug = resolveGhRepoSlug(opts.repo);
       octokit = makeOctokit(resolveGhToken());
-      prRef = { ...parseRepoSlug(slug), pull_number: opts.pr };
-      log(`Fetching diff for ${slug}#${opts.pr}…`);
+      prRef = { ...parseRepoSlug(slug), pull_number: ghPrNumber };
+      log(`Fetching diff for ${slug}#${ghPrNumber}…`);
       diffText = await getPrDiff(octokit, prRef);
-      changeDescription = `PR #${opts.pr} in ${slug}`;
+      changeDescription = `PR #${ghPrNumber} in ${slug}`;
     } else {
       diffText = await getLocalDiff({ cwd, staged: opts.staged, base: opts.base });
       changeDescription = opts.staged

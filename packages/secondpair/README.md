@@ -38,7 +38,9 @@ only. Add `.pr-review.yml` only when you want to change them (see
 
 Pick your platform, set its token, run with `--post`:
 
-**GitHub** (GitHub Actions: `GITHUB_TOKEN` is provided automatically)
+**GitHub** (GitHub Actions: `GITHUB_TOKEN` is provided automatically; PR
+number is auto-detected from `GITHUB_EVENT_PATH`/`GITHUB_REF` on a
+`pull_request`-triggered workflow, so `--pr`/`--repo` are optional there)
 ```bash
 export GITHUB_TOKEN=ghp_...
 npx secondpair review --pr 123 --repo owner/name --post --fail-on high
@@ -62,14 +64,30 @@ npx secondpair review --post --fail-on high
 vars aren't set. Exit code is 1 when any active finding is at/above
 `fail_on` — wire that into your pipeline as the merge gate.
 
+`--post` always needs a real PR/MR to comment on — via `--pr`, or your
+platform's CI auto-detection above. `--base`/`--staged` are for local-diff
+mode only (no `--post`); combining `--post` with `--base` and no resolvable
+PR throws immediately rather than silently reviewing nothing.
+
 ### Example: GitHub Actions
 
 ```yaml
-- run: npx secondpair review --pr ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --post
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+on:
+  pull_request:
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx secondpair review --post --fail-on high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+(Explicit `--pr ${{ github.event.pull_request.number }} --repo ${{ github.repository }}`
+still works and is required for `workflow_run`/non-`pull_request` triggers,
+where there's no PR event to auto-detect from.)
 
 Re-running on the same PR (new commit, or CI re-triggered) never
 double-posts — each platform re-checks live existing comment ids right
