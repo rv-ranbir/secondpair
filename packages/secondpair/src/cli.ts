@@ -56,7 +56,7 @@ import { appendSuppressionIds, loadSuppressions } from "./suppressions.js";
 import { SEVERITIES, type Finding } from "./types.js";
 
 /** Split embedded review state into re-analyze vs carry-forward buckets. */
-function splitFindingsSinceLastReview(
+export function splitFindingsSinceLastReview(
   prev: ReviewState,
   currentHeadSha: string,
   changedSinceLastReview: Set<string>,
@@ -71,11 +71,17 @@ function splitFindingsSinceLastReview(
     return new Set();
   }
   if (changedSinceLastReview.size === 0) {
+    // GitHub/GitLab/Bitbucket's compare can legitimately (or, per a live
+    // GitHub quirk, sometimes spuriously) report zero changed files between
+    // two different head shas. Re-analyzing everything here is worse than
+    // doing nothing: it dumps the whole PR back into filesToAnalyze,
+    // surfacing comments on files this push never touched. Carry every
+    // prior finding forward unchanged instead — same as no push at all.
     log(
-      `Head SHA changed (${prev.headSha.slice(0, 7)} → ${currentHeadSha.slice(0, 7)}) but compare returned no changed files — re-analyzing all ${prev.findings.length} prior finding(s).`,
+      `Head SHA changed (${prev.headSha.slice(0, 7)} → ${currentHeadSha.slice(0, 7)}) but compare returned no changed files — carrying forward all ${prev.findings.length} prior finding(s) unchanged (no re-analysis).`,
     );
-    previousFindings.push(...prev.findings);
-    return undefined;
+    carryForwardFindings.push(...prev.findings);
+    return new Set();
   }
   for (const f of prev.findings) {
     (changedSinceLastReview.has(f.file) ? previousFindings : carryForwardFindings).push(f);
