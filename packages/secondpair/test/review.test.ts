@@ -368,6 +368,53 @@ index 1111111..2222222 100644
     expect(result.reconciliation?.resolved).toEqual([fixed.id]);
   });
 
+  it("semantic_dedup pool excludes stale carry-forward findings on re-analyzed files", async () => {
+    const staleCarryForward = {
+      file: "src/math.ts",
+      start_line: 2,
+      end_line: 3,
+      severity: "high" as const,
+      category: "bug" as const,
+      confidence: 0.95,
+      title: "Loop reads past the end of the array",
+      body: "x",
+      id: "stale-carry-forward-id",
+    };
+    mockedCall.mockResolvedValueOnce({
+      summary: "run",
+      findings: [
+        {
+          file: "src/math.ts",
+          start_line: 2,
+          end_line: 3,
+          severity: "high",
+          category: "bug",
+          confidence: 0.95,
+          title: "Loop reads past the end of the array, reworded",
+          body: "x",
+          suggestion: null,
+        },
+      ],
+    });
+
+    const result = await runReview({
+      cwd: process.cwd(),
+      diffText: DIFF,
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, semantic_dedup: true },
+      changeDescription: "test",
+      useContext: false,
+      changedFiles: new Set(["src/math.ts"]),
+      carryForwardFindings: [staleCarryForward],
+    });
+
+    // Only the review call ran — no dedup_output call, because the stale
+    // carry-forward entry (its file was re-analyzed) is dropped from the
+    // dedup pool before it can wrongly swallow the new finding.
+    expect(mockedCall).toHaveBeenCalledTimes(1);
+    expect(result.reconciliation?.new).toHaveLength(1);
+    expect(result.findingsToPost).toHaveLength(1);
+  });
+
   it("semantic_dedup reclassifies a reworded 'new' finding as persistent and skips reposting it", async () => {
     const priorFinding = {
       id: "prior-id-1",

@@ -327,7 +327,7 @@ export async function runReview(opts: RunReviewOptions): Promise<RunReviewOutput
     // findings from files the new candidates don't touch can't match —
     // sending them just burns tokens (and on a PR where the touched files
     // never had prior findings, this empties the pool and skips the call).
-    const priorPool = [...(opts.previousFindings ?? []), ...(opts.carryForwardFindings ?? [])].filter((f) =>
+    const priorPool = [...(opts.previousFindings ?? []), ...carryForward].filter((f) =>
       newFiles.has(f.file),
     );
     if (priorPool.length > 0 && newFindings.length > 0) {
