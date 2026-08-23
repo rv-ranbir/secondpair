@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import pc from "picocolors";
 import { getModel, runIndex } from "repocairn";
 import {
@@ -330,9 +329,7 @@ program
     }
   });
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  program.parseAsync().catch((err: unknown) => {
-    console.error(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
-    process.exit(2);
-  });
-}
+program.parseAsync().catch((err: unknown) => {
+  console.error(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+  process.exit(2);
+});

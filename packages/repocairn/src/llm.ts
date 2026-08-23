@@ -286,35 +286,15 @@ async function cliStructuredCall<S extends z.ZodType>(
 ): Promise<z.infer<S>> {
   const jsonSchema = JSON.stringify(zodOutputFormat(opts.schema).schema);
 
-  const timeoutMs = Number(
-    process.env.REPOCAIRN_CLI_TIMEOUT_MS ?? process.env.PR_REVIEW_CLI_TIMEOUT_MS ?? 300_000,
-  );
-
   const run = (extraUser: string | null) =>
     new Promise<{ prompt: string; out: string }>((resolve, reject) => {
       // shell:true — the command is a user-configured command line, not a path
       const child = spawn(settings.cliCommand!, { shell: true, windowsHide: true });
       let out = "";
       let err = "";
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        child.kill();
-        reject(
-          new Error(
-            `CLI provider (${settings.cliCommand}) produced no output within ${timeoutMs}ms. Set REPOCAIRN_CLI_TIMEOUT_MS to override.`,
-          ),
-        );
-      }, timeoutMs);
       child.stdout.on("data", (c: Buffer) => (out += c));
       child.stderr.on("data", (c: Buffer) => (err += c));
-      child.on("error", (e) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(e);
-      });
+      child.on("error", reject);
       const prompt = [
         opts.system,
         `Respond with ONLY a JSON object matching this JSON schema (no prose, no markdown fences):\n${jsonSchema}`,
@@ -324,9 +304,6 @@ async function cliStructuredCall<S extends z.ZodType>(
         .filter(Boolean)
         .join("\n\n");
       child.on("close", (code) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
         if (code !== 0) {
           reject(new Error(`CLI provider exited ${code}: ${err.slice(0, 500) || out.slice(0, 500)}`));
         } else resolve({ prompt, out });
