@@ -21,6 +21,55 @@ function f(overrides: Partial<Finding> = {}): Finding {
 }
 
 describe("splitFindingsSinceLastReview", () => {
+  it("carries everything forward and returns an empty set when the head sha is unchanged (no push)", () => {
+    const prev: ReviewState = {
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      findings: [f({ file: "src/a.ts", id: "id-1" }), f({ file: "src/b.ts", id: "id-2" })],
+    };
+    const previousIds = new Set<string>();
+    const previousFindings: PreviousFinding[] = [];
+    const carryForwardFindings: Finding[] = [];
+
+    const changedFiles = splitFindingsSinceLastReview(
+      prev,
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      new Set(),
+      previousIds,
+      previousFindings,
+      carryForwardFindings,
+      () => {},
+    );
+
+    expect(changedFiles).toEqual(new Set());
+    expect(previousFindings).toHaveLength(0);
+    expect(carryForwardFindings.map((c) => c.id)).toEqual(["id-1", "id-2"]);
+    expect(previousIds).toEqual(new Set(["id-1", "id-2"]));
+  });
+
+  it("splits prior findings by file when compare reports a real, non-empty set of changed files", () => {
+    const prev: ReviewState = {
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      findings: [f({ file: "src/a.ts", id: "id-1" }), f({ file: "src/b.ts", id: "id-2" })],
+    };
+    const previousIds = new Set<string>();
+    const previousFindings: PreviousFinding[] = [];
+    const carryForwardFindings: Finding[] = [];
+
+    const changedFiles = splitFindingsSinceLastReview(
+      prev,
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      new Set(["src/a.ts"]),
+      previousIds,
+      previousFindings,
+      carryForwardFindings,
+      () => {},
+    );
+
+    expect(changedFiles).toEqual(new Set(["src/a.ts"]));
+    expect(previousFindings.map((p) => p.id)).toEqual(["id-1"]);
+    expect(carryForwardFindings.map((c) => c.id)).toEqual(["id-2"]);
+  });
+
   it("carries every prior finding forward unchanged when compare reports zero changed files despite a different head sha", () => {
     const prev: ReviewState = {
       headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

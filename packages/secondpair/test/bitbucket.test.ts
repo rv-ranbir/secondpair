@@ -171,6 +171,53 @@ describe("resolveBbCommentsForIds", () => {
   });
 });
 
+describe("postBbReview update-in-place", () => {
+  it("edits the last summary comment in place instead of posting a new one when there's nothing new", async () => {
+    withEnv({ BITBUCKET_TOKEN: "tok" });
+    const posted = { ...finding, id: "aabbccddeeff0011" };
+    const result: ReviewResult = {
+      summary: "still there",
+      findings: [posted],
+      dropped: [],
+      findingsToPost: [posted],
+      reconciliation: { new: [], persistent: [posted.id!], resolved: [], suppressed: [] },
+    };
+    const summaryBody = formatBbSummaryBody(result, false, "sha1");
+    const inlineBody = formatBbCommentBody(posted);
+
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (!init?.method) {
+        return {
+          ok: true,
+          json: async () => ({
+            values: [
+              { id: 5, content: { raw: summaryBody } },
+              { id: 6, content: { raw: inlineBody }, inline: { path: posted.file, to: posted.end_line } },
+            ],
+          }),
+          headers: { get: () => null },
+          text: async () => "",
+        };
+      }
+      return { ok: true, json: async () => ({}), headers: { get: () => null }, text: async () => "" };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await postBbReview({
+      ref: { workspace: "acme", repoSlug: "api", prId: 7 },
+      result,
+      failed: false,
+      headSha: "sha1",
+    });
+
+    const puts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(String(puts[0][0])).toContain("/comments/5");
+    const posts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST");
+    expect(posts).toHaveLength(0);
+  });
+});
+
 describe("Bitbucket comment formatting", () => {
   it("renders severity, category, title, body and the dedupe marker", () => {
     const body = formatBbCommentBody(finding);

@@ -312,4 +312,54 @@ describe("postGlReview", () => {
       ),
     ).toBe(true);
   });
+
+  it("edits the last summary note in place instead of posting a new one when there's nothing new", async () => {
+    withEnv({ GITLAB_TOKEN: "tok" });
+    const finding: Finding = {
+      file: "a.ts",
+      start_line: 1,
+      end_line: 1,
+      severity: "high",
+      category: "bug",
+      confidence: 0.9,
+      title: "x",
+      body: "y",
+      suggestion: null,
+      id: "abc123def4567890",
+    };
+    const result: ReviewResult = {
+      summary: "s",
+      findings: [finding],
+      dropped: [],
+      findingsToPost: [finding],
+      reconciliation: { new: [], persistent: [finding.id!], resolved: [], suppressed: [] },
+    };
+
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/notes") && (!init || !init.method || init.method === "GET")) {
+        return {
+          ok: true,
+          json: async () => [
+            { id: 42, body: `old\n[secondpair-id]: # (pr-review-id: abc123def4567890)\n${AGENT_MARKER}`, type: null },
+          ],
+          headers: { get: () => null },
+          text: async () => "",
+        };
+      }
+      return { ok: true, json: async () => ({}), headers: { get: () => null }, text: async () => "" };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await postGlReview({
+      ref: { serverUrl: "https://gitlab.com", projectId: "1", mrIid: 2 },
+      diffRefs: { base_sha: "b", head_sha: "h", start_sha: "s" },
+      result,
+      failed: false,
+    });
+
+    const puts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
+    expect(puts.some((c) => String(c[0]).endsWith("/notes/42"))).toBe(true);
+    const posts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST");
+    expect(posts.every((c) => !String(c[0]).endsWith("/notes"))).toBe(true);
+  });
 });
