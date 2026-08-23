@@ -35,36 +35,17 @@ export function formatCommentBody(f: Finding): string {
   return body;
 }
 
+/**
+ * Body for the review/note/comment that carries findings — no visible
+ * summary text, just the hidden AGENT_MARKER (+ embedded state when
+ * headSha is given) so per-platform agent-comment scanning still works.
+ */
 export function formatReviewBody(
   result: ReviewResult & { highLevelReview?: boolean },
   failed: boolean,
   headSha?: string,
 ): string {
-  const counts = countBySeverity(result.findings);
-  const countLine =
-    result.findings.length === 0
-      ? "No findings."
-      : Object.entries(counts)
-          .map(([sev, n]) => `${SEVERITY_EMOJI[sev as Severity]} ${n} ${sev}`)
-          .join(" · ");
-  const highLevelLine = result.highLevelReview
-    ? "\n⚠️ **Large diff** — high-level review only (critical/high severity). Consider splitting this PR."
-    : "";
-  const recon = result.reconciliation;
-  const reconLine = recon
-    ? `\n_Lifecycle:_ ${recon.new.length} new · ${recon.persistent.length} persistent · ${recon.resolved.length} resolved · ${recon.suppressed.length} suppressed`
-    : "";
-  let body = [
-    `## PR Review Agent`,
-    "",
-    result.summary.trim(),
-    "",
-    countLine,
-    highLevelLine,
-    reconLine,
-    failed ? "\n❌ **Check failed**: findings at or above the configured severity threshold." : "",
-    AGENT_MARKER,
-  ].join("\n");
+  let body = AGENT_MARKER;
   if (headSha) body = embedReviewState(body, { headSha, findings: result.findings });
   return body;
 }
@@ -82,12 +63,6 @@ export async function getReviewState(octokit: Octokit, pr: PrRef): Promise<Revie
     if (state) return state;
   }
   return null;
-}
-
-function countBySeverity(findings: Finding[]): Partial<Record<Severity, number>> {
-  const counts: Partial<Record<Severity, number>> = {};
-  for (const f of findings) counts[f.severity] = (counts[f.severity] ?? 0) + 1;
-  return counts;
 }
 
 export interface PostReviewOptions {

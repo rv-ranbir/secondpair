@@ -187,22 +187,13 @@ describe("Bitbucket comment formatting", () => {
     expect(body).not.toContain("```suggestion");
   });
 
-  it("summary carries counts and the failure notice", () => {
+  it("summary carries no visible text, just the hidden agent marker", () => {
     const body = formatBbSummaryBody(
       { summary: "One problem.", findings: [finding], dropped: [] },
       true,
     );
-    expect(body).toContain("1 high");
-    expect(body).toContain("Check failed");
+    expect(body).not.toContain("1 high");
+    expect(body).not.toContain("Check failed");
     expect(body).toContain(AGENT_MARKER);
-  });
-
-  it("summary shows the high-level-review banner when set", () => {
-    const body = formatBbSummaryBody(
-      { summary: "Big diff.", findings: [], dropped: [], highLevelReview: true },
-      false,
-    );
-    expect(body).toContain("Large diff");
-    expect(body).toContain("high-level review only");
   });
 });

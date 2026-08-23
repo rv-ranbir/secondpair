@@ -13,15 +13,10 @@ import {
 import type { Finding, ReviewResult } from "../src/types.js";
 
 describe("formatReviewBody", () => {
-  it("shows the high-level-review banner when set", () => {
+  it("carries no visible text, just the hidden agent marker", () => {
     const body = formatReviewBody({ summary: "Big diff.", findings: [], dropped: [], highLevelReview: true }, false);
-    expect(body).toContain("Large diff");
-    expect(body).toContain("high-level review only");
-  });
-
-  it("omits the banner when unset (regression)", () => {
-    const body = formatReviewBody({ summary: "Looks good.", findings: [], dropped: [] }, false);
-    expect(body).not.toContain("high-level review only");
+    expect(body).not.toContain("Large diff");
+    expect(body).toContain(AGENT_MARKER);
   });
 });
 
