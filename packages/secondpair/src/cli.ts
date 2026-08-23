@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pc from "picocolors";
 import { getModel, runIndex } from "repocairn";
 import {
@@ -335,7 +336,11 @@ program
     }
   });
 
-program.parseAsync().catch((err: unknown) => {
-  console.error(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
-  process.exit(2);
-});
+// Only run the CLI when this file is executed directly (the bin entry point) —
+// importing it for its exports (e.g. in tests) must not trigger commander.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  program.parseAsync().catch((err: unknown) => {
+    console.error(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(2);
+  });
+}
