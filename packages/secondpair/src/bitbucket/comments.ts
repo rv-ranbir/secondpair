@@ -202,10 +202,9 @@ export interface PostBbReviewOptions {
 /**
  * Post findings to a Bitbucket Cloud PR: one summary comment plus one inline
  * comment per *new* finding. Persistent findings (same pr-review-id) are skipped.
- * The summary's embedded review state — head sha + every active finding —
- * must stay current for the next run's incremental diff and reconciliation:
- * when there's nothing new to post, the last summary comment is edited in
- * place instead of posting a fresh one every run.
+ * The summary is re-posted every run (not just the first) so its embedded
+ * review state — head sha + every active finding — stays current for the
+ * next run's incremental diff and reconciliation.
  */
 export async function postBbReview(opts: PostBbReviewOptions): Promise<void> {
   const { ref, result, log = () => {} } = opts;
@@ -214,31 +213,13 @@ export async function postBbReview(opts: PostBbReviewOptions): Promise<void> {
   const existing = await listBbComments(ref);
   const mine = existing.filter((c) => c.content?.raw?.includes(AGENT_MARKER));
   const existingIds = collectIdsFromBodies(mine.map((c) => c.content?.raw ?? ""));
-  const summaries = mine.filter((c) => c.inline == null);
-
-  const toPost = result.findingsToPost ?? result.findings;
-  const pending = toPost.filter((f) => !(f.id && existingIds.has(f.id)));
-  const summaryBody = formatBbSummaryBody(result, opts.failed, opts.headSha);
-  const lastCommentId = summaries.length > 0 ? summaries[summaries.length - 1].id : undefined;
-
-  if (pending.length === 0 && lastCommentId != null) {
-    await bbFetch(`${commentsUrl}/${lastCommentId}`, {
-      method: "PUT",
-      body: JSON.stringify({ content: { raw: summaryBody } }),
-    });
-    log("No new findings to post; updated the existing summary comment in place.");
-    const resolvedIds = result.reconciliation?.resolved ?? [];
-    if (resolvedIds.length > 0) {
-      await resolveBbCommentsForIds(ref, resolvedIds, log);
-    }
-    return;
-  }
 
   await bbFetch(commentsUrl, {
     method: "POST",
-    body: JSON.stringify({ content: { raw: summaryBody } }),
+    body: JSON.stringify({ content: { raw: formatBbSummaryBody(result, opts.failed, opts.headSha) } }),
   });
 
+  const toPost = result.findingsToPost ?? result.findings;
   let posted = 0;
   let skipped = 0;
   const failedInline: Finding[] = [];

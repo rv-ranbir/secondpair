@@ -286,8 +286,9 @@ async function cliStructuredCall<S extends z.ZodType>(
 ): Promise<z.infer<S>> {
   const jsonSchema = JSON.stringify(zodOutputFormat(opts.schema).schema);
 
-  const timeoutMs =
-    Number(process.env.REPOCAIRN_CLI_TIMEOUT_MS || process.env.PR_REVIEW_CLI_TIMEOUT_MS) || 300_000;
+  const timeoutMs = Number(
+    process.env.REPOCAIRN_CLI_TIMEOUT_MS ?? process.env.PR_REVIEW_CLI_TIMEOUT_MS ?? 300_000,
+  );
 
   const run = (extraUser: string | null) =>
     new Promise<{ prompt: string; out: string }>((resolve, reject) => {
@@ -299,12 +300,10 @@ async function cliStructuredCall<S extends z.ZodType>(
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        child.kill("SIGKILL");
+        child.kill();
         reject(
           new Error(
-            `CLI provider "${settings.cliCommand}" produced no output within ${timeoutMs}ms and was killed. ` +
-              `If it needs interactive auth, log in once locally before running in CI, or verify it can reach the network non-interactively. ` +
-              `Override the timeout with REPOCAIRN_CLI_TIMEOUT_MS.`,
+            `CLI provider (${settings.cliCommand}) produced no output within ${timeoutMs}ms. Set REPOCAIRN_CLI_TIMEOUT_MS to override.`,
           ),
         );
       }, timeoutMs);

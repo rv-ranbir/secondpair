@@ -33,7 +33,7 @@ import {
   parseRepoSlug,
   type PrRef,
 } from "./diff/github.js";
-import { detectGhPrNumberFromEnv, resolveGhRepoSlug, resolveGhToken } from "./github/auth.js";
+import { resolveGhRepoSlug, resolveGhToken } from "./github/auth.js";
 import { getLocalDiff } from "./diff/local.js";
 import {
   getReviewState,
@@ -57,7 +57,7 @@ import { appendSuppressionIds, loadSuppressions } from "./suppressions.js";
 import { SEVERITIES, type Finding } from "./types.js";
 
 /** Split embedded review state into re-analyze vs carry-forward buckets. */
-export function splitFindingsSinceLastReview(
+function splitFindingsSinceLastReview(
   prev: ReviewState,
   currentHeadSha: string,
   changedSinceLastReview: Set<string>,
@@ -72,17 +72,11 @@ export function splitFindingsSinceLastReview(
     return new Set();
   }
   if (changedSinceLastReview.size === 0) {
-    // GitHub/GitLab/Bitbucket's compare can legitimately (or, per a live
-    // GitHub quirk, sometimes spuriously) report zero changed files between
-    // two different head shas. Re-analyzing everything here is worse than
-    // doing nothing: it dumps the whole PR back into filesToAnalyze,
-    // surfacing comments on files this push never touched. Carry every
-    // prior finding forward unchanged instead — same as no push at all.
     log(
-      `Head SHA changed (${prev.headSha.slice(0, 7)} → ${currentHeadSha.slice(0, 7)}) but compare returned no changed files — carrying forward all ${prev.findings.length} prior finding(s) unchanged (no re-analysis).`,
+      `Head SHA changed (${prev.headSha.slice(0, 7)} → ${currentHeadSha.slice(0, 7)}) but compare returned no changed files — re-analyzing all ${prev.findings.length} prior finding(s).`,
     );
-    carryForwardFindings.push(...prev.findings);
-    return new Set();
+    previousFindings.push(...prev.findings);
+    return undefined;
   }
   for (const f of prev.findings) {
     (changedSinceLastReview.has(f.file) ? previousFindings : carryForwardFindings).push(f);
@@ -157,14 +151,6 @@ program
     const host = detectHost(opts.host);
     const bbPrAvailable = host === "bitbucket" && (opts.pr != null || process.env.BITBUCKET_PR_ID);
     const glMrAvailable = host === "gitlab" && (opts.pr != null || process.env.CI_MERGE_REQUEST_IID);
-    const ghPrNumber = host === "github" ? (opts.pr ?? detectGhPrNumberFromEnv() ?? undefined) : opts.pr;
-
-    // Fail loud immediately if --post can never be honored, instead of falling
-    // through to local-diff mode and possibly exiting 0 with no report on an
-    // empty diff — silently masking a misconfigured (missing --pr) invocation.
-    if (opts.post && !glMrAvailable && !bbPrAvailable && ghPrNumber == null) {
-      throw new Error("--post requires a PR (--pr, or Bitbucket/GitLab/GitHub Actions CI env vars).");
-    }
 
     let diffText: string;
     let changeDescription: string;
@@ -186,13 +172,13 @@ program
       log(`Fetching diff for ${bbRef.workspace}/${bbRef.repoSlug} PR #${bbRef.prId} (Bitbucket)…`);
       diffText = await getBbPrDiff(bbRef);
       changeDescription = `PR #${bbRef.prId} in ${bbRef.workspace}/${bbRef.repoSlug}`;
-    } else if (ghPrNumber != null) {
+    } else if (opts.pr != null) {
       const slug = resolveGhRepoSlug(opts.repo);
       octokit = makeOctokit(resolveGhToken());
-      prRef = { ...parseRepoSlug(slug), pull_number: ghPrNumber };
-      log(`Fetching diff for ${slug}#${ghPrNumber}…`);
+      prRef = { ...parseRepoSlug(slug), pull_number: opts.pr };
+      log(`Fetching diff for ${slug}#${opts.pr}…`);
       diffText = await getPrDiff(octokit, prRef);
-      changeDescription = `PR #${ghPrNumber} in ${slug}`;
+      changeDescription = `PR #${opts.pr} in ${slug}`;
     } else {
       diffText = await getLocalDiff({ cwd, staged: opts.staged, base: opts.base });
       changeDescription = opts.staged
@@ -344,8 +330,6 @@ program
     }
   });
 
-// Only run the CLI when this file is executed directly (the bin entry point) —
-// importing it for its exports (e.g. in tests) must not trigger commander.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   program.parseAsync().catch((err: unknown) => {
     console.error(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}`));

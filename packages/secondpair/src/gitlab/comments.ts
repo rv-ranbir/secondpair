@@ -224,32 +224,13 @@ export async function postGlReview(opts: PostGlReviewOptions): Promise<void> {
   const notes = await listGlNotes(ref);
   const mine = notes.filter((n) => n.body?.includes(AGENT_MARKER));
   const existingIds = collectIdsFromBodies(mine.map((n) => n.body ?? ""));
-  const summaries = mine.filter((n) => n.type == null);
-
-  const toPost = result.findingsToPost ?? result.findings;
-  const pending = toPost.filter((f) => !(f.id && existingIds.has(f.id)));
-  const summaryBody = formatBbSummaryBody(result, opts.failed, diffRefs.head_sha);
-  const lastNoteId = summaries.length > 0 ? summaries[summaries.length - 1].id : undefined;
-
-  if (pending.length === 0 && lastNoteId != null) {
-    await glFetch(`${glApi(ref)}/notes/${lastNoteId}`, {
-      method: "PUT",
-      body: JSON.stringify({ body: summaryBody }),
-    });
-    log("No new findings to post; updated the existing summary note in place.");
-    const resolvedIds = result.reconciliation?.resolved ?? [];
-    if (resolvedIds.length > 0) {
-      const resolved = await resolveGlDiscussionsForIds(ref, resolvedIds, log);
-      if (resolved) log(`GitLab: resolved ${resolved} discussion(s) for fixed findings.`);
-    }
-    return;
-  }
 
   await glFetch(`${glApi(ref)}/notes`, {
     method: "POST",
-    body: JSON.stringify({ body: summaryBody }),
+    body: JSON.stringify({ body: formatBbSummaryBody(result, opts.failed, diffRefs.head_sha) }),
   });
 
+  const toPost = result.findingsToPost ?? result.findings;
   let posted = 0;
   let skipped = 0;
   const failedInline: Finding[] = [];

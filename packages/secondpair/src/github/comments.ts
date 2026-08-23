@@ -84,15 +84,6 @@ export async function getReviewState(octokit: Octokit, pr: PrRef): Promise<Revie
   return null;
 }
 
-/** Id of the agent's most recent review on this PR, so a no-new-findings run can edit it in place. */
-async function findLastAgentReviewId(octokit: Octokit, pr: PrRef): Promise<number | null> {
-  const reviews = await octokit.paginate(octokit.pulls.listReviews, { ...pr, per_page: 100 });
-  for (let i = reviews.length - 1; i >= 0; i--) {
-    if (reviews[i].body?.includes(AGENT_MARKER)) return reviews[i].id;
-  }
-  return null;
-}
-
 function countBySeverity(findings: Finding[]): Partial<Record<Severity, number>> {
   const counts: Partial<Record<Severity, number>> = {};
   for (const f of findings) counts[f.severity] = (counts[f.severity] ?? 0) + 1;
@@ -252,20 +243,6 @@ export async function postReview(opts: PostReviewOptions): Promise<void> {
   if (skipped) log(`Skipping ${skipped} comment(s) already posted (same finding id).`);
 
   const body = formatReviewBody(result, opts.failed, opts.headSha);
-
-  if (comments.length === 0) {
-    const lastReviewId = await findLastAgentReviewId(octokit, pr);
-    if (lastReviewId != null) {
-      await octokit.pulls.updateReview({ ...pr, review_id: lastReviewId, body });
-      log("No new findings to post; updated the existing review summary in place.");
-      const resolvedIds = result.reconciliation?.resolved ?? [];
-      if (resolvedIds.length > 0) {
-        const resolved = await resolveThreadsForIds(octokit, pr, resolvedIds, log);
-        if (resolved) log(`Resolved ${resolved} thread(s) for fixed findings.`);
-      }
-      return;
-    }
-  }
 
   try {
     await octokit.pulls.createReview({
