@@ -359,6 +359,17 @@ function tryParse<S extends z.ZodType>(
   }
   const parsed = schema.safeParse(raw);
   if (parsed.success) return { ok: true, value: parsed.data };
+
+  // Some agent CLIs (`cursor-agent -p --output-format json`, `claude -p
+  // --output-format json`) wrap the model's answer in a result envelope
+  // (`{ type: "result", result: "<our JSON>", ... }`) instead of emitting
+  // it directly — unwrap and retry once before giving up.
+  const result = (raw as { result?: unknown } | null)?.result;
+  if (typeof result === "string") {
+    const unwrapped = tryParse(schema, result);
+    if (unwrapped.ok) return unwrapped;
+  }
+
   return {
     ok: false,
     error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),

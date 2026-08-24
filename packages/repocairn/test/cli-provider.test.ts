@@ -52,6 +52,22 @@ describe("cli provider structuredCall", () => {
     expect(out.greeting).toBe("fenced");
   });
 
+  it("unwraps a result envelope (--output-format json style CLIs)", async () => {
+    await fakeCli(`
+      process.stdin.resume();
+      process.stdin.on("end", () => {
+        console.log(JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: JSON.stringify({ greeting: "from envelope" }),
+          session_id: "abc",
+        }));
+      });
+    `);
+    const out = await structuredCall({ system: "sys", user: "usr", schema, schemaName: "t" });
+    expect(out.greeting).toBe("from envelope");
+  });
+
   it("repairs once when the first response fails validation", async () => {
     const marker = path.join(dir, "second-run").replace(/\\/g, "\\\\");
     await fakeCli(`

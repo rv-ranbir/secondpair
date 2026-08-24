@@ -90,9 +90,11 @@ The Anthropic API is the default (official SDK, schema-constrained output). Any 
 | OpenRouter | `OPENROUTER_API_KEY` + `PR_REVIEW_MODEL` (e.g. `anthropic/claude-sonnet-4.5`) |
 | OpenAI | `OPENAI_API_KEY` + `PR_REVIEW_MODEL` (e.g. `gpt-4o`) |
 | Any OpenAI-compatible endpoint (LiteLLM, vLLM, Together, …) | `PR_REVIEW_BASE_URL` + `PR_REVIEW_API_KEY` + `PR_REVIEW_MODEL` |
-| Local agent CLI (Cursor, Claude Code, …) | `PR_REVIEW_CLI_COMMAND` (e.g. `cursor-agent -p` or `claude -p`) — no API key; uses your agent subscription |
+| Local agent CLI (Cursor, Claude Code, …) | `PR_REVIEW_CLI_COMMAND` (e.g. `cursor-agent -p --output-format json` or `claude -p --output-format json`) — no API key; uses your agent subscription |
 
 Force a provider with `PR_REVIEW_PROVIDER=anthropic|openai|openrouter|openai-compatible|cli`; otherwise it's inferred from which key is set.
+
+For the `cli` provider, always pass `--output-format json`: the default `text` format can interleave tool-call/session status (e.g. bash-tool state) into stdout alongside the answer, which breaks JSON parsing. `--output-format json` emits a single clean result object; the `result` field (the CLI's actual answer) is unwrapped automatically.
 
 The **cli provider** pipes the review prompt to the configured command on stdin and expects a JSON answer on stdout (prose/markdown fences around the JSON are tolerated, one repair retry on schema errors). Any headless agent CLI works.
 
