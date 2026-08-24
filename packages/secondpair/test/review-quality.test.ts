@@ -197,7 +197,7 @@ describe("self-critique", () => {
     const result = await runReview({
       cwd: process.cwd(),
       diffText: DIFF,
-      config: { ...DEFAULT_CONFIG, parallel_agents: false, self_critique: true },
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, self_critique: true, semantic_dedup: false },
       changeDescription: "t",
       useContext: false,
     });
@@ -216,7 +216,7 @@ describe("self-critique", () => {
     const result = await runReview({
       cwd: process.cwd(),
       diffText: DIFF,
-      config: { ...DEFAULT_CONFIG, parallel_agents: false, self_critique: true },
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, self_critique: true, semantic_dedup: false },
       changeDescription: "t",
       useContext: false,
     });

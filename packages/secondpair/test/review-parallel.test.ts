@@ -11,6 +11,7 @@ import { structuredCall } from "repocairn";
 import {
   CORRECTNESS_LENS_SYSTEM_PROMPT,
   HIGH_LEVEL_SYSTEM_PROMPT,
+  OVERLAP_DEDUP_SYSTEM_PROMPT,
   SECURITY_LENS_SYSTEM_PROMPT,
 } from "../src/llm/prompt.js";
 import { runReview } from "../src/review.js";
@@ -103,6 +104,9 @@ describe("parallel_agents — enabled", () => {
           ],
         };
       }
+      if (system === OVERLAP_DEDUP_SYSTEM_PROMPT) {
+        return { drop_ids: [] };
+      }
       return {
         summary: "qual",
         findings: [
@@ -129,8 +133,8 @@ describe("parallel_agents — enabled", () => {
       useContext: false,
     });
 
-    expect(mockedCall).toHaveBeenCalledTimes(3);
-    expect(result.stats.llmCalls).toBe(3);
+    expect(mockedCall).toHaveBeenCalledTimes(4);
+    expect(result.stats.llmCalls).toBe(4);
     expect(result.stats.lensStats && Object.keys(result.stats.lensStats).sort()).toEqual([
       "correctness",
       "quality",

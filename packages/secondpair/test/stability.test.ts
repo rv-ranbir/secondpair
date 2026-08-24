@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clusterOverlapping,
   embedFindingId,
   findingsSoftMatch,
   fingerprintFinding,
@@ -191,5 +192,43 @@ describe("reconcileFindings", () => {
     });
     expect(result.reconciliation.resolved).toEqual(["deadbeefdeadbeef"]);
     expect(result.reconciliation.resolved).not.toContain(retainedId);
+  });
+});
+
+describe("clusterOverlapping", () => {
+  it("groups same-file, line-overlapping findings regardless of title or category", () => {
+    // Mirrors the real-world duplicate: near-zero title-token overlap, different category.
+    const a = f({
+      file: "bitbucket-pipelines.yml",
+      start_line: 5,
+      end_line: 56,
+      category: "bug",
+      title: "Open-PR pipelines no longer run Test/Lint/Build",
+    });
+    const b = f({
+      file: "bitbucket-pipelines.yml",
+      start_line: 5,
+      end_line: 56,
+      category: "complexity",
+      title: "Large commented-out PR pipeline blocks are hard to maintain",
+    });
+    expect(clusterOverlapping([a, b])).toEqual([[a, b]]);
+  });
+
+  it("does not cluster findings in different files, or non-overlapping lines in the same file", () => {
+    const sameFileFar = f({ file: "src/a.ts", start_line: 1, end_line: 2 });
+    const sameFileFar2 = f({ file: "src/a.ts", start_line: 50, end_line: 52 });
+    const otherFile = f({ file: "src/b.ts", start_line: 1, end_line: 2 });
+    expect(clusterOverlapping([sameFileFar, sameFileFar2, otherFile])).toEqual([]);
+  });
+
+  it("merges a chain of pairwise-overlapping findings into one cluster", () => {
+    const a = f({ file: "src/a.ts", start_line: 1, end_line: 2 });
+    const b = f({ file: "src/a.ts", start_line: 4, end_line: 5 });
+    const c = f({ file: "src/a.ts", start_line: 7, end_line: 8 });
+    // a~b overlap (slack 3), b~c overlap (slack 3), a and c alone do not.
+    const clusters = clusterOverlapping([a, b, c]);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0]).toHaveLength(3);
   });
 });

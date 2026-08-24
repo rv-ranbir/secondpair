@@ -555,6 +555,138 @@ index 1111111..2222222 100644
     expect(result.findingsToPost).toHaveLength(1);
   });
 
+  it("overlap dedup drops a same-block duplicate reported under a different category", async () => {
+    // Same file, same lines, near-zero title-token overlap, different category —
+    // the shape findingsSoftMatch can't catch, and the shape that produced a
+    // real duplicate PR comment: two findings on the same commented-out block.
+    mockedCall
+      .mockResolvedValueOnce({
+        summary: "run",
+        findings: [
+          {
+            file: "src/math.ts",
+            start_line: 2,
+            end_line: 3,
+            severity: "high",
+            category: "bug",
+            confidence: 0.95,
+            title: "Loop reads past the end of the array",
+            body: "x",
+            suggestion: null,
+          },
+          {
+            file: "src/math.ts",
+            start_line: 2,
+            end_line: 3,
+            severity: "low",
+            category: "complexity",
+            confidence: 0.7,
+            title: "Manual loop is hard to follow",
+            body: "y",
+            suggestion: null,
+          },
+        ],
+      })
+      .mockImplementationOnce(async (opts: { schemaName: string; user: string }) => {
+        expect(opts.schemaName).toBe("overlap_dedup_output");
+        const dropId = /id: ([a-f0-9]+)\n\s+lines: [^\n]*\n\s+category: complexity/.exec(opts.user)?.[1];
+        expect(dropId).toBeTruthy();
+        return { drop_ids: [dropId] };
+      });
+
+    const result = await runReview({
+      cwd: process.cwd(),
+      diffText: DIFF,
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, semantic_dedup: true, self_critique: false },
+      changeDescription: "test",
+      useContext: false,
+    });
+
+    expect(mockedCall).toHaveBeenCalledTimes(2);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].category).toBe("bug");
+    expect(result.dropped.some((f) => f.category === "complexity")).toBe(true);
+  });
+
+  it("skips the overlap dedup LLM call when no findings share overlapping lines", async () => {
+    mockedCall.mockResolvedValueOnce({
+      summary: "run",
+      findings: [
+        {
+          file: "src/math.ts",
+          start_line: 2,
+          end_line: 3,
+          severity: "high",
+          category: "bug",
+          confidence: 0.95,
+          title: "Loop reads past the end of the array",
+          body: "x",
+          suggestion: null,
+        },
+      ],
+    });
+
+    const result = await runReview({
+      cwd: process.cwd(),
+      diffText: DIFF,
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, semantic_dedup: true, self_critique: false },
+      changeDescription: "test",
+      useContext: false,
+    });
+
+    expect(mockedCall).toHaveBeenCalledTimes(1); // review call only, no overlap dedup call
+    expect(result.findings).toHaveLength(1);
+  });
+
+  it("overlap dedup guard rescues the best-ranked finding when the model drops an entire cluster", async () => {
+    mockedCall
+      .mockResolvedValueOnce({
+        summary: "run",
+        findings: [
+          {
+            file: "src/math.ts",
+            start_line: 2,
+            end_line: 3,
+            severity: "high",
+            category: "bug",
+            confidence: 0.95,
+            title: "Loop reads past the end of the array",
+            body: "x",
+            suggestion: null,
+          },
+          {
+            file: "src/math.ts",
+            start_line: 2,
+            end_line: 3,
+            severity: "low",
+            category: "complexity",
+            confidence: 0.5,
+            title: "Manual loop is hard to follow",
+            body: "y",
+            suggestion: null,
+          },
+        ],
+      })
+      .mockImplementationOnce(async (opts: { schemaName: string; user: string }) => {
+        expect(opts.schemaName).toBe("overlap_dedup_output");
+        // Misfire: model tries to drop every finding in the cluster.
+        const ids = [...opts.user.matchAll(/id: ([a-f0-9]+)/g)].map((m) => m[1]);
+        return { drop_ids: ids };
+      });
+
+    const result = await runReview({
+      cwd: process.cwd(),
+      diffText: DIFF,
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, semantic_dedup: true, self_critique: false },
+      changeDescription: "test",
+      useContext: false,
+    });
+
+    // The higher-severity/confidence finding survives; the misfire never empties the cluster.
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].category).toBe("bug");
+  });
+
   it("returns cleanly on a diff with only ignored files", async () => {
     const lockDiff = DIFF.replaceAll("src/math.ts", "package-lock.json");
     const result = await runReview({

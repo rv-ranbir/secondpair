@@ -114,3 +114,47 @@ export function findingsSoftMatch(
   // Large line drift only trusted when the wording is near-identical.
   return sim >= 0.6;
 }
+
+/**
+ * Group findings from the same review run into clusters of same-file,
+ * line-overlapping findings — candidates for an intra-run duplicate check.
+ * Unlike `findingsSoftMatch`, this ignores title/category entirely (pure
+ * proximity): two findings on the same block can describe the same root
+ * cause in completely different words, which is exactly the case a lexical
+ * heuristic can't catch and an LLM judgment call is needed for. Singletons
+ * (no overlap with anything else in their file) are omitted.
+ */
+export function clusterOverlapping<T extends Pick<Finding, "file" | "start_line" | "end_line">>(
+  findings: T[],
+): T[][] {
+  const byFile = new Map<string, T[]>();
+  for (const f of findings) {
+    if (!byFile.has(f.file)) byFile.set(f.file, []);
+    byFile.get(f.file)!.push(f);
+  }
+
+  const clusters: T[][] = [];
+  for (const group of byFile.values()) {
+    const assigned = new Array<number>(group.length).fill(-1);
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        if (!linesNear(group[i], group[j])) continue;
+        if (assigned[i] === -1 && assigned[j] === -1) {
+          assigned[i] = assigned[j] = clusters.push([group[i], group[j]]) - 1;
+        } else if (assigned[i] === -1) {
+          clusters[assigned[j]].push(group[i]);
+          assigned[i] = assigned[j];
+        } else if (assigned[j] === -1) {
+          clusters[assigned[i]].push(group[j]);
+          assigned[j] = assigned[i];
+        } else if (assigned[i] !== assigned[j]) {
+          const [keep, merge] = [assigned[i], assigned[j]];
+          clusters[keep].push(...clusters[merge]);
+          clusters[merge] = [];
+          for (let k = 0; k < assigned.length; k++) if (assigned[k] === merge) assigned[k] = keep;
+        }
+      }
+    }
+  }
+  return clusters.filter((c) => c.length > 0);
+}

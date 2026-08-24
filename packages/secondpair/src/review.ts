@@ -4,14 +4,16 @@ import { z } from "zod";
 import { detectSignals, estimateTokens, getModel, loadIndex, selectContext, structuredCall, type ContextEntry, type Signal } from "repocairn";
 import { isIgnored } from "./config.js";
 import { parseDiff } from "./diff/parse.js";
-import { withFindingId } from "./finding-id.js";
+import { clusterOverlapping, withFindingId } from "./finding-id.js";
 import {
   CRITIQUE_SYSTEM_PROMPT,
   DEDUP_SYSTEM_PROMPT,
   HIGH_LEVEL_SYSTEM_PROMPT,
+  OVERLAP_DEDUP_SYSTEM_PROMPT,
   REVIEW_SYSTEM_PROMPT,
   buildCritiqueUserPrompt,
   buildDedupUserPrompt,
+  buildOverlapDedupUserPrompt,
   buildReviewUserPrompt,
 } from "./llm/prompt.js";
 import { reviewOutputSchema, validateFindings, type ReviewOutput } from "./llm/schema.js";
@@ -265,6 +267,62 @@ export async function runReview(opts: RunReviewOptions): Promise<RunReviewOutput
   }
   let identified: Finding[] = deduped;
 
+  // Exact-fingerprint dedup only catches literal repeats. Two findings can
+  // still land on the same block of the same file — different category,
+  // different wording — because they were produced by independent LLM calls
+  // (parallel lenses, chunked files) that never saw each other's output.
+  // Cluster by line proximity (title/category-agnostic) and let the model
+  // judge whether clustered findings share a root cause.
+  let droppedOverlap: Finding[] = [];
+  const overlapClusters =
+    opts.config.semantic_dedup && !highLevelReview ? clusterOverlapping(identified) : [];
+  if (overlapClusters.length > 0) {
+    const dropSchema = z.object({
+      drop_ids: z.array(z.string()).describe("Ids of the findings to drop as duplicates"),
+    });
+    const overlap = await withRetry(() =>
+      structuredCall({
+        system: OVERLAP_DEDUP_SYSTEM_PROMPT,
+        user: buildOverlapDedupUserPrompt(
+          overlapClusters.map((cluster) => ({
+            file: cluster[0].file,
+            findings: cluster.map((f) => ({
+              id: f.id,
+              start_line: f.start_line,
+              end_line: f.end_line,
+              severity: f.severity,
+              category: f.category,
+              confidence: f.confidence,
+              title: f.title,
+              body: f.body,
+            })),
+          })),
+        ),
+        schema: dropSchema,
+        schemaName: "overlap_dedup_output",
+        temperature,
+        onUsage,
+      }),
+    );
+    stats.llmCalls += 1;
+    const dropIds = new Set(overlap.drop_ids);
+    // Never let a misfire empty an entire cluster — rescue the best-ranked
+    // member (mirrors the self-critique misfire guard below).
+    const value = (f: Finding) => f.confidence - severityRank(f.severity) / 100;
+    for (const cluster of overlapClusters) {
+      if (cluster.every((f) => dropIds.has(f.id!))) {
+        const best = [...cluster].sort((a, b) => value(b) - value(a))[0];
+        dropIds.delete(best.id!);
+      }
+    }
+    if (dropIds.size > 0) {
+      droppedOverlap = identified.filter((f) => dropIds.has(f.id!));
+      identified = identified.filter((f) => !dropIds.has(f.id!));
+      stats.droppedDuplicates += droppedOverlap.length;
+      log(`Overlap dedup: ${droppedOverlap.length} finding(s) on the same block as another finding dropped.`);
+    }
+  }
+
   let droppedCritique: Finding[] = [];
   if (opts.config.self_critique && identified.length > 0 && !highLevelReview) {
     const keepSchema = z.object({
@@ -400,7 +458,7 @@ export async function runReview(opts: RunReviewOptions): Promise<RunReviewOutput
   return {
     findings: finalActive,
     summary,
-    dropped: [...validated.dropped, ...capped, ...duplicates, ...droppedCritique],
+    dropped: [...validated.dropped, ...capped, ...duplicates, ...droppedOverlap, ...droppedCritique],
     reconciliation: finalReconciliation,
     findingsToPost: toPost,
     files,

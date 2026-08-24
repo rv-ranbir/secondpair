@@ -108,6 +108,31 @@ export function buildDedupUserPrompt(input: {
   return `# PRIOR FINDINGS (already posted on this PR)\n${prior}\n\n# NEW FINDINGS (candidates to post)\n${news}\n\nReturn the new_id/prior_id pairs that are duplicates.`;
 }
 
+export const OVERLAP_DEDUP_SYSTEM_PROMPT = `You are re-reading a single pull-request review before it is posted. Findings below are grouped into CLUSTERS — each cluster is one file where two or more findings land on the same or overlapping lines. Different clusters never overlap with each other; only compare findings within the same cluster.
+
+Rules:
+1. Within a cluster, findings that describe the same underlying root cause — even under a different category or wording — are duplicates of each other. Keep the single most useful one (prefer higher severity, then higher confidence) and drop the rest.
+2. Findings on overlapping lines that describe genuinely different problems are NOT duplicates — keep both.
+3. Never drop every finding in a cluster; if everything in a cluster looks like the same issue, still keep the best one.
+4. Return only the ids to DROP.`;
+
+export function buildOverlapDedupUserPrompt(
+  clusters: { file: string; findings: { id?: string; start_line: number; end_line: number; severity: string; category: string; confidence: number; title: string; body: string }[] }[],
+): string {
+  const rendered = clusters
+    .map((c, i) => {
+      const findings = c.findings
+        .map(
+          (f) =>
+            `  - id: ${f.id}\n    lines: ${f.start_line}-${f.end_line}\n    category: ${f.category}\n    severity: ${f.severity}\n    confidence: ${f.confidence}\n    title: ${f.title}\n    body: ${f.body}`,
+        )
+        .join("\n");
+      return `## Cluster ${i + 1} — ${c.file}\n${findings}`;
+    })
+    .join("\n\n");
+  return `${rendered}\n\nReturn the ids to drop.`;
+}
+
 export interface ReviewPromptInput {
   files: FileDiff[];
   /** Rendered repository context from the codemap; empty when no index exists. */
