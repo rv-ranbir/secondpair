@@ -1,5 +1,10 @@
 # secondpair
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/secondpair-darkmode-wordmark.png">
+  <img alt="secondpair" src="assets/secondpair-wordmark-light.png" height="80">
+</picture>
+
 **LLM-powered PR review with whole-repo context — the second pair of eyes.**
 A CLI + GitHub Action that reviews pull requests (GitHub, GitLab, Bitbucket) the way a senior engineer would: knowing the codebase, not just the patch.
 
