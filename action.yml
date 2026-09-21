@@ -77,4 +77,4 @@ runs:
         if [ -n "${{ inputs.fail-on }}" ]; then ARGS+=(--fail-on "${{ inputs.fail-on }}"); fi
         if [ -n "${{ inputs.config-path }}" ]; then ARGS+=(--config "${{ inputs.config-path }}"); fi
         if [ "${{ inputs.post-comments }}" = "true" ]; then ARGS+=(--post); fi
-        node "${{ github.action_path }}/packages/secondpair/dist/cli.js" "${ARGS[@]}"
+        node "${{ github.action_path }}/dist/cli.js" "${ARGS[@]}"

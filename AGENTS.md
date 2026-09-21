@@ -26,8 +26,9 @@ github. `src/github/comments.ts` imports `Octokit` as `import type` only
 (erased at compile) so it stays safe to import statically. Never add a
 value-level (non-type) import of `@octokit/rest` outside `diff/github.ts`.
 
-Package root: `packages/secondpair`. Entry points: `src/cli.ts` (bin:
-`secondpair` / `pr-review`), `src/index.ts` (library exports).
+Package root: repo root (flat, single-package layout — no workspaces).
+Entry points: `src/cli.ts` (bin: `secondpair` / `pr-review`), `src/index.ts`
+(library exports).
 
 ## Pipeline (in call order)
 

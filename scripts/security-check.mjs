@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -35,13 +34,4 @@ if (total !== 0) {
   process.exit(1);
 }
 
-for (const name of ["secondpair"]) {
-  const installed = realpathSync(join(root, "node_modules", name));
-  const workspace = realpathSync(join(root, "packages", name));
-  if (installed !== workspace) {
-    console.error(`${name} resolves outside the local workspace: ${installed}`);
-    process.exit(1);
-  }
-}
-
-console.log("Security check passed: zero vulnerabilities; local workspaces linked.");
+console.log("Security check passed: zero vulnerabilities.");

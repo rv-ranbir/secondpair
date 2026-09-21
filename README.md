@@ -195,7 +195,7 @@ src/math.ts
 2. Runs are **incremental**: only files whose content hash changed are re-extracted and re-summarized; deleted files are pruned. A post-merge workflow keeps the committed index in sync with `main`.
 3. At review time, **context selection is deterministic** — no extra LLM call. For each changed file the import graph yields its importers and imports, ranked by how many changed files they touch, packed into `context_token_budget`. That context rides in the prompt alongside the annotated diff.
 
-The index lives at `.secondpair/index.json` in the consuming repo: transparent, versioned with the code, and identical for local runs and CI. The codemap is an optional feature — see [`secondpair install`](packages/secondpair/AGENTS.md) to install only the platform/codemap dependencies you need.
+The index lives at `.secondpair/index.json` in the consuming repo: transparent, versioned with the code, and identical for local runs and CI. The codemap is an optional feature — see [`secondpair install`](AGENTS.md) to install only the platform/codemap dependencies you need.
 
 The memory is **not review-only**. The same index serves any AI tool in your stack:
 
@@ -204,7 +204,7 @@ The memory is **not review-only**. The same index serves any AI tool in your sta
 claude mcp add secondpair -- secondpair mcp
 ```
 
-That gives every assistant `get_context` (what depends on these files?), `search_symbols` (where is X?), and `file_info` (what does this file do?) over the committed repo memory — no re-reading the codebase, no extra LLM calls. Details, CLI and library API: [`packages/secondpair`](packages/secondpair).
+That gives every assistant `get_context` (what depends on these files?), `search_symbols` (where is X?), and `file_info` (what does this file do?) over the committed repo memory — no re-reading the codebase, no extra LLM calls. Details, CLI and library API: [`src`](src).
 
 ## Development
 
@@ -213,7 +213,7 @@ npm install
 npm run build            # tsc → dist/
 npm test                 # vitest — LLM calls are mocked, no network
 npm run typecheck
-npm run smoke:pr-review  # required after any packages/secondpair change
+npm run smoke:pr-review  # required after any secondpair source change
 ```
 
 `smoke:pr-review` builds, runs secondpair tests, checks CLI help, and exercises fingerprints / suppressions / reconcile against `dist/`. If an LLM API key is set, it also runs a live review in a temp repo.

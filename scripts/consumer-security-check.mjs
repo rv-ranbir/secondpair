@@ -45,10 +45,7 @@ const output = requestedOutput ? path.resolve(root, requestedOutput) : path.join
 try {
   await mkdir(output, { recursive: true });
 
-  const secondpairPack = npm(
-    ["pack", "--workspace", "secondpair", "--pack-destination", output, "--json"],
-    root,
-  );
+  const secondpairPack = npm(["pack", "--pack-destination", output, "--json"], root);
   const secondpair = JSON.parse(secondpairPack.stdout)[0];
   const bundledPaths = new Set(secondpair.files.map(({ path: file }) => file));
   for (const required of [

@@ -25,7 +25,7 @@ Checklist:
 
 ## 1. Automated npm and GitHub release
 
-Prepare one reviewed change that bumps `packages/secondpair/package.json`'s
+Prepare one reviewed change that bumps `package.json`'s
 `version` and passes CI (`.github/workflows/ci.yml`: security check,
 typecheck, test, smoke test, packed-consumer check).
 
@@ -35,7 +35,7 @@ clean temporary project with no consumer override, and requires
 `npm audit --json` total to be zero.
 
 Push a matching tag such as `v1.2.3` or prerelease tag such as
-`v1.2.3-beta.1`. The tag must match `packages/secondpair/package.json`'s
+`v1.2.3-beta.1`. The tag must match `package.json`'s
 version exactly, or the release workflow's tag-check step fails it. Floating
 tags such as `v1` do not trigger npm publishing.
 
@@ -59,7 +59,7 @@ npm run security:consumers
 After publishing, users can run `npx secondpair init` and
 `npx secondpair review --staged`. For a partial install (e.g. bitbucket-only,
 skipping octokit/tree-sitter), see `secondpair install` in
-`packages/secondpair/AGENTS.md`.
+`AGENTS.md`.
 
 ## 2. Publish the GitHub Action to Marketplace
 
