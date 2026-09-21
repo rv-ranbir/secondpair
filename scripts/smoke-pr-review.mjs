@@ -21,7 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const CLI = path.join(ROOT, "packages/secondpair/dist/cli.js");
+const CLI = path.join(ROOT, "dist/cli.js");
 
 let failed = 0;
 function ok(msg) {
@@ -64,8 +64,8 @@ try {
 // 2. Unit tests (package only)
 console.log("\n2. unit tests (secondpair)");
 try {
-  run("npx", ["vitest", "run", "packages/secondpair"]);
-  ok("vitest packages/secondpair");
+  run("npx", ["vitest", "run"]);
+  ok("vitest");
 } catch (e) {
   fail("unit tests", e);
 }
@@ -96,16 +96,16 @@ try {
     normalizeTitle,
     embedFindingId,
     parseFindingId,
-  } = await import("../packages/secondpair/dist/finding-id.js");
-  const { reconcileFindings } = await import("../packages/secondpair/dist/reconcile.js");
-  const { loadSuppressions } = await import("../packages/secondpair/dist/suppressions.js");
+  } = await import("../dist/finding-id.js");
+  const { reconcileFindings } = await import("../dist/reconcile.js");
+  const { loadSuppressions } = await import("../dist/suppressions.js");
   const { formatCommentBody, AGENT_MARKER } = await import(
-    "../packages/secondpair/dist/github/comments.js"
+    "../dist/github/comments.js"
   );
   const { buildJsonReport, loadPreviousIds, writeJsonReport } = await import(
-    "../packages/secondpair/dist/report/json.js"
+    "../dist/report/json.js"
   );
-  const { shouldFail } = await import("../packages/secondpair/dist/report/cli.js");
+  const { shouldFail } = await import("../dist/report/cli.js");
 
   const finding = {
     file: "src/x.ts",

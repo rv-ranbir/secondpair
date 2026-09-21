@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,79 +38,56 @@ async function audit(consumer, label) {
   return total;
 }
 
-async function installConsumer(directory, tarballs, label) {
-  await mkdir(directory);
-  npm(["init", "-y"], directory);
-  npm(["install", ...tarballs, "--ignore-scripts"], directory);
-
-  const sdk = JSON.parse(
-    await readFile(
-      path.join(directory, "node_modules/repocairn/node_modules/@modelcontextprotocol/sdk/package.json"),
-      "utf8",
-    ),
-  );
-  const hono = JSON.parse(
-    await readFile(
-      path.join(directory, "node_modules/repocairn/node_modules/@hono/node-server/package.json"),
-      "utf8",
-    ),
-  );
-  if (hono.version !== "2.0.12") {
-    throw new Error(`${label}: expected @hono/node-server 2.0.12, found ${hono.version}`);
-  }
-  const total = await audit(directory, label);
-  console.log(`${label}: repocairn -> @modelcontextprotocol/sdk@${sdk.version} -> @hono/node-server@${hono.version}; audit total ${total}`);
-}
-
-const temporary = await mkdtemp(path.join(os.tmpdir(), "ai-tools-consumer-security-"));
+const temporary = await mkdtemp(path.join(os.tmpdir(), "secondpair-consumer-security-"));
 const requestedOutput = process.argv[2];
 const output = requestedOutput ? path.resolve(root, requestedOutput) : path.join(temporary, "packages");
 
 try {
   await mkdir(output, { recursive: true });
-  const stagedRepoCairn = path.join(temporary, "repocairn");
-  await cp(path.join(root, "packages/repocairn"), stagedRepoCairn, {
-    recursive: true,
-    filter: (source) =>
-      !["node_modules", "package-lock.json", "npm-shrinkwrap.json"].includes(path.basename(source)),
-  });
 
-  npm(["install", "--ignore-scripts", "--package-lock=false"], stagedRepoCairn);
-  const repocairnPack = npm(
-    ["pack", stagedRepoCairn, "--pack-destination", output, "--json"],
-    root,
-  );
-  const repocairn = JSON.parse(repocairnPack.stdout)[0];
-  const bundledPaths = new Set(repocairn.files.map(({ path: file }) => file));
+  const secondpairPack = npm(["pack", "--pack-destination", output, "--json"], root);
+  // npm pack --json's top-level shape has varied across npm versions: an
+  // array of one entry on older npm, an object keyed by package name on
+  // newer npm (12.x). Handle both.
+  const packed = JSON.parse(secondpairPack.stdout);
+  const secondpair = Array.isArray(packed) ? packed[0] : Object.values(packed)[0];
+  const bundledPaths = new Set(secondpair.files.map(({ path: file }) => file));
   for (const required of [
     "node_modules/@modelcontextprotocol/sdk/package.json",
     "node_modules/@hono/node-server/package.json",
   ]) {
     if (!bundledPaths.has(required)) {
-      throw new Error(`repocairn tarball is missing bundled ${required}`);
+      throw new Error(`secondpair tarball is missing bundled ${required}`);
     }
   }
-
-  const secondpairPack = npm(
-    ["pack", "--workspace", "secondpair", "--pack-destination", output, "--json"],
-    root,
-  );
-  const secondpair = JSON.parse(secondpairPack.stdout)[0];
-  const repocairnTarball = path.join(output, repocairn.filename);
   const secondpairTarball = path.join(output, secondpair.filename);
 
-  await installConsumer(
-    path.join(temporary, "repocairn-consumer"),
-    [repocairnTarball],
-    "repocairn consumer",
+  const consumer = path.join(temporary, "secondpair-consumer");
+  await mkdir(consumer);
+  npm(["init", "-y"], consumer);
+  npm(["install", secondpairTarball, "--ignore-scripts"], consumer);
+
+  const sdk = JSON.parse(
+    await readFile(
+      path.join(consumer, "node_modules/secondpair/node_modules/@modelcontextprotocol/sdk/package.json"),
+      "utf8",
+    ),
   );
-  await installConsumer(
-    path.join(temporary, "secondpair-consumer"),
-    [repocairnTarball, secondpairTarball],
-    "secondpair consumer",
+  const hono = JSON.parse(
+    await readFile(
+      path.join(consumer, "node_modules/secondpair/node_modules/@hono/node-server/package.json"),
+      "utf8",
+    ),
+  );
+  if (hono.version !== "2.0.12") {
+    throw new Error(`secondpair consumer: expected @hono/node-server 2.0.12, found ${hono.version}`);
+  }
+  const total = await audit(consumer, "secondpair consumer");
+  console.log(
+    `secondpair consumer: secondpair -> @modelcontextprotocol/sdk@${sdk.version} -> @hono/node-server@${hono.version}; audit total ${total}`,
   );
 
-  console.log(`Packed ${repocairn.filename} and ${secondpair.filename}; consumer security passed.`);
+  console.log(`Packed ${secondpair.filename}; consumer security passed.`);
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

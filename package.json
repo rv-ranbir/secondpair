@@ -1,32 +1,74 @@
 {
-  "name": "ai-tools",
-  "private": true,
+  "name": "secondpair",
+  "version": "0.2.0",
+  "description": "LLM-powered pull request reviewer with whole-repo context from an optional, persistent codemap",
   "type": "module",
-  "workspaces": [
-    "packages/*"
+  "bin": {
+    "secondpair": "./dist/cli.js",
+    "pr-review": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "author": "rv-ranbir",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rv-ranbir/secondpair.git"
+  },
+  "homepage": "https://github.com/rv-ranbir/secondpair#readme",
+  "bugs": "https://github.com/rv-ranbir/secondpair/issues",
+  "keywords": [
+    "ai",
+    "llm",
+    "pr-review",
+    "code-review",
+    "github-actions",
+    "gitlab-ci",
+    "bitbucket",
+    "claude"
+  ],
+  "files": [
+    "dist"
   ],
   "scripts": {
     "build": "tsc -b",
+    "dev": "tsx src/cli.ts",
     "security": "node scripts/security-check.mjs",
     "security:consumers": "node scripts/consumer-security-check.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
-    "smoke:pr-review": "node scripts/smoke-pr-review.mjs",
-    "test:pr-review": "vitest run packages/secondpair"
+    "smoke:pr-review": "node scripts/smoke-pr-review.mjs"
   },
   "engines": {
     "node": ">=24.19.0"
   },
-  "license": "MIT",
   "overrides": {
-    "@modelcontextprotocol/sdk": {
-      "@hono/node-server": "2.0.12"
-    },
     "hono": "^4.13.3",
     "fast-uri": "^3.1.5",
     "nanoid": "^3.3.18"
   },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "commander": "^12.1.0",
+    "picocolors": "^1.1.0",
+    "typescript": "^5.6.0",
+    "yaml": "^2.5.0",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@octokit/rest": "^21.0.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@hono/node-server": "2.0.12",
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "0.20.8",
+    "web-tree-sitter-modern": "npm:web-tree-sitter@0.26.11"
+  },
+  "bundleDependencies": [
+    "@modelcontextprotocol/sdk",
+    "@hono/node-server"
+  ],
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
