@@ -1,8 +1,8 @@
 # secondpair
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/secondpair-darkmode-wordmark.png">
-  <img alt="secondpair" src="assets/secondpair-wordmark-light.png" height="80">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/secondpair-darkmode-wordmark-cropped.png">
+  <img alt="secondpair" src="assets/secondpair-wordmark-light-cropped.png" height="60">
 </picture>
 
 **LLM-powered PR review with whole-repo context — the second pair of eyes.**
