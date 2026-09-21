@@ -6,7 +6,7 @@ starts the automated npm and GitHub release workflow.
 ## 0. Before the first public commit
 
 Repo identity is set: `LICENSE` and `package.json` (`author`,
-`repository`, `homepage`, `bugs`) point to `github.com/rv-ranbir/ai-tools`.
+`repository`, `homepage`, `bugs`) point to `github.com/rv-ranbir/secondpair`.
 `YOUR_WORKSPACE` in `examples/bitbucket-pipelines.yml` is intentionally
 left as a placeholder — that one's a user-fill-in example, not this repo's
 own identity.
@@ -75,7 +75,7 @@ immutable semantic tag that triggers npm publishing:
 4. Pick a category (e.g. "Code review", "Continuous integration").
 5. Publish.
 
-Consumers then reference it as `uses: rv-ranbir/ai-tools@v1` in their
+Consumers then reference it as `uses: rv-ranbir/secondpair@v1` in their
 workflow — see `examples/pr-review.yml` for the consumer-side usage this
 should match.
 

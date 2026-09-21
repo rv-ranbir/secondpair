@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: YOUR_GITHUB_USERNAME/ai-tools@v1
+      - uses: YOUR_GITHUB_USERNAME/secondpair@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           fail-on: high

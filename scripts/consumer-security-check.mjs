@@ -38,7 +38,7 @@ async function audit(consumer, label) {
   return total;
 }
 
-const temporary = await mkdtemp(path.join(os.tmpdir(), "ai-tools-consumer-security-"));
+const temporary = await mkdtemp(path.join(os.tmpdir(), "secondpair-consumer-security-"));
 const requestedOutput = process.argv[2];
 const output = requestedOutput ? path.resolve(root, requestedOutput) : path.join(temporary, "packages");
 

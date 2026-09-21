@@ -13,10 +13,10 @@
   "author": "rv-ranbir",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rv-ranbir/ai-tools.git"
+    "url": "git+https://github.com/rv-ranbir/secondpair.git"
   },
-  "homepage": "https://github.com/rv-ranbir/ai-tools#readme",
-  "bugs": "https://github.com/rv-ranbir/ai-tools/issues",
+  "homepage": "https://github.com/rv-ranbir/secondpair#readme",
+  "bugs": "https://github.com/rv-ranbir/secondpair/issues",
   "keywords": [
     "ai",
     "llm",
