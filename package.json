@@ -44,9 +44,6 @@
     "node": ">=24.19.0"
   },
   "overrides": {
-    "@modelcontextprotocol/sdk": {
-      "@hono/node-server": "2.0.12"
-    },
     "hono": "^4.13.3",
     "fast-uri": "^3.1.5",
     "nanoid": "^3.3.18"
@@ -62,13 +59,15 @@
   "optionalDependencies": {
     "@octokit/rest": "^21.0.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "@hono/node-server": "2.0.12",
     "@vscode/tree-sitter-wasm": "0.3.1",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "0.20.8",
     "web-tree-sitter-modern": "npm:web-tree-sitter@0.26.11"
   },
   "bundleDependencies": [
-    "@modelcontextprotocol/sdk"
+    "@modelcontextprotocol/sdk",
+    "@hono/node-server"
   ],
   "devDependencies": {
     "@types/node": "^22.0.0",

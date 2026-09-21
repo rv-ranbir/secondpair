@@ -46,11 +46,15 @@ try {
   await mkdir(output, { recursive: true });
 
   const secondpairPack = npm(["pack", "--pack-destination", output, "--json"], root);
-  const secondpair = JSON.parse(secondpairPack.stdout)[0];
+  // npm pack --json's top-level shape has varied across npm versions: an
+  // array of one entry on older npm, an object keyed by package name on
+  // newer npm (12.x). Handle both.
+  const packed = JSON.parse(secondpairPack.stdout);
+  const secondpair = Array.isArray(packed) ? packed[0] : Object.values(packed)[0];
   const bundledPaths = new Set(secondpair.files.map(({ path: file }) => file));
   for (const required of [
     "node_modules/@modelcontextprotocol/sdk/package.json",
-    "node_modules/@modelcontextprotocol/sdk/node_modules/@hono/node-server/package.json",
+    "node_modules/@hono/node-server/package.json",
   ]) {
     if (!bundledPaths.has(required)) {
       throw new Error(`secondpair tarball is missing bundled ${required}`);
@@ -71,10 +75,7 @@ try {
   );
   const hono = JSON.parse(
     await readFile(
-      path.join(
-        consumer,
-        "node_modules/secondpair/node_modules/@modelcontextprotocol/sdk/node_modules/@hono/node-server/package.json",
-      ),
+      path.join(consumer, "node_modules/secondpair/node_modules/@hono/node-server/package.json"),
       "utf8",
     ),
   );
