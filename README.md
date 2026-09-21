@@ -1,5 +1,3 @@
-# secondpair
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/secondpair-darkmode-wordmark-cropped.png">
   <img alt="secondpair" src="assets/secondpair-wordmark-light-cropped.png" height="60">
@@ -8,10 +6,22 @@
 **LLM-powered PR review with whole-repo context — the second pair of eyes.**
 A CLI + GitHub Action that reviews pull requests (GitHub, GitLab, Bitbucket) the way a senior engineer would: knowing the codebase, not just the patch.
 
+[![npm](https://img.shields.io/npm/v/secondpair?color=2B6CB0&label=npm)](https://www.npmjs.com/package/secondpair)
+[![license](https://img.shields.io/badge/license-MIT-2B6CB0)](#license)
+[![node](https://img.shields.io/badge/node-%3E%3D20-2B6CB0)](#setup)
+
+---
+
 One package, two parts:
 
 - **The reviewer** (`secondpair review`) — reviews a diff with an LLM, posts inline comments, gates CI on severity.
 - **The codemap** (`secondpair index`/`init`/`mcp`, `src/codemap/`) — an optional, persistent, token-efficient index of the whole repo (symbols, import graph, LLM summaries) that feeds the reviewer whole-project context, and is also reusable by **any** AI tool via MCP server, CLI, or library. Its heavy deps (tree-sitter, MCP SDK) are `optionalDependencies` — plain `secondpair review` never needs them.
+
+### Contents
+
+[The problem](#the-problem) · [Architecture](#architecture) · [What it flags](#what-it-flags) · [Setup](#setup) · [Providers](#providers) · [CI](#2-use-in-any-ci-plan-b) · [Configuration](#5-configuration-pr-reviewyml) · [Sample output](#sample-output) · [How the memory works](#how-the-memory-works--and-how-to-reuse-it) · [Development](#development)
+
+---
 
 ## The problem
 
@@ -58,6 +68,8 @@ flowchart TD
 | `custom` | anything your `.pr-review.yml` custom instructions ask for |
 
 Every finding carries a severity (`critical`→`info`), a category, a model-rated confidence, a markdown explanation, and — where possible — a drop-in fix rendered as a GitHub **suggested change**. Findings the model invents outside the diff are dropped by post-validation, and low-confidence findings are filtered by a configurable floor, so the output is a gate, not noise.
+
+---
 
 ## Setup
 
@@ -176,6 +188,8 @@ Every review ends with one machine-readable line on stderr for CI dashboards:
 pr-review-summary {"model":"claude-sonnet-5","llmCalls":1,"inputTokens":8123,…}
 ```
 
+---
+
 ## Sample output
 
 > 📸 *Screenshot of a generated PR review comment goes here after the first real run.*
@@ -194,6 +208,8 @@ src/math.ts
 1 finding(s): 1 high
 ```
 
+---
+
 ## How the memory works — and how to reuse it
 
 1. **`secondpair index`** walks the repo (respecting `.gitignore` + your `ignore` patterns) and stores, per file: a content hash, exported symbol signatures and resolved relative imports (TypeScript compiler API for TS/JS, regex heuristics for other languages), and a one-paragraph LLM summary (batched calls; skipped with `--no-llm`).
@@ -210,6 +226,8 @@ claude mcp add secondpair -- secondpair mcp
 ```
 
 That gives every assistant `get_context` (what depends on these files?), `search_symbols` (where is X?), and `file_info` (what does this file do?) over the committed repo memory — no re-reading the codebase, no extra LLM calls. Details, CLI and library API: [`src`](src).
+
+---
 
 ## Development
 
