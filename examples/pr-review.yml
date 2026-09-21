@@ -1,7 +1,7 @@
 # Copy to .github/workflows/pr-review.yml in the consuming repository.
 #
 # Prerequisites:
-#   1. Commit `.repocairn/index.json` (from `repocairn init` + hooks locally)
+#   1. Commit `.secondpair/index.json` (from `secondpair init` + hooks locally)
 #   2. Store an LLM API key as a repo secret
 #
 # Checkout is required so the action can read the committed brain.
@@ -21,6 +21,15 @@ permissions:
   contents: read
   pull-requests: write
 
+# Required: secondpair's dedupe check is read-then-write (checks existing
+# comment ids, then posts). Two runs racing on the same PR (e.g. a fast
+# re-push re-triggering `synchronize` before the first run finishes) can
+# both pass the check and double-post. This queues re-triggers on the same
+# PR and cancels the stale one instead of letting them race.
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest
@@ -28,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Review PR
-        uses: YOUR_GITHUB_USERNAME/repocairn@v1
+        uses: YOUR_GITHUB_USERNAME/ai-tools@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Or another provider:

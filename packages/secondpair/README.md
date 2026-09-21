@@ -2,28 +2,36 @@
 
 LLM-powered PR reviewer with whole-repo context. Reviews a diff (local,
 staged, or a GitHub/GitLab/Bitbucket PR), posts inline comments, gates CI
-on severity. Uses sibling package [`repocairn`](../repocairn/README.md) as
-its repo memory so review isn't diff-blind — it sees callers, related
-files, and project context, not just the patch.
+on severity. Ships with an optional built-in **codemap** — a persistent
+repo memory (symbols, import graph, LLM summaries) — so review isn't
+diff-blind when it's installed: it sees callers, related files, and
+project context, not just the patch.
+
+The codemap is genuinely optional. It needs a handful of heavier
+dependencies (tree-sitter/wasm for parsing, `@modelcontextprotocol/sdk` for
+the `mcp` command) declared as `optionalDependencies` — if they fail to
+install (or you skip them with `--omit=optional`), `secondpair review` still
+works, just diff-only.
 
 ## Install
 
 ```bash
-npm install --save-dev secondpair
+npm install --save-dev secondpair                    # with codemap support
+npm install --save-dev --omit=optional secondpair     # diff-only, no codemap
 ```
 
-Needs an LLM API key (same resolution as `repocairn` — set one):
+Needs an LLM API key (same resolution used for both review and the codemap):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...      # default, recommended
-# or: OPENAI_API_KEY / OPENROUTER_API_KEY / REPOCAIRN_API_KEY+REPOCAIRN_BASE_URL+REPOCAIRN_MODEL
+# or: OPENAI_API_KEY / OPENROUTER_API_KEY / SECONDPAIR_API_KEY+SECONDPAIR_BASE_URL+SECONDPAIR_MODEL
 ```
 
 ## Quick start
 
 ```bash
 cd your-repo
-npx repocairn init          # one-time: builds repo memory, installs git hooks
+npx secondpair init                      # one-time: builds repo memory, installs git hooks (needs the optional deps)
 npx secondpair review --staged           # review staged changes, print report
 npx secondpair review --base main        # review branch vs main
 ```
@@ -81,7 +89,7 @@ before posting, on top of run-to-run fingerprint reconciliation.
 fail_on: off               # critical|high|medium|low|info|off — CI exit-1 threshold; default "off" never fails, still posts/reports
 min_confidence: 0.5
 ignore: ["**/*.generated.ts", "vendor/**"]
-context_token_budget: 8000 # repocairn context injected per chunk
+context_token_budget: 8000 # codemap context injected per chunk
 context_snippets: 3
 signal_detector: true      # deterministic hook/error-handling/control-flow scan, injected as prompt context
 categories:                # turn any off
@@ -112,7 +120,7 @@ things to always flag) without touching the YAML. None of this is mandatory
 first):
 
 1. `.secondpair/instructions.mdc` or `.secondpair/instructions.md` — same
-   convention as `.claude`/`.cursor`/`.repocairn`. Nothing to configure, just
+   convention as `.claude`/`.cursor`/`.secondpair`. Nothing to configure, just
    drop the file in.
 2. `custom_instructions_file` (default `.pr-review-instructions.md`)
 3. inline `custom_instructions` above
@@ -127,12 +135,24 @@ from the report.
 
 ## `secondpair index`
 
-Alias for `repocairn index` — kept so a repo can adopt `secondpair` without
-also depending on `repocairn` directly for this one command. Same
-incremental behavior; see [repocairn's README](../repocairn/README.md#staying-in-sync-after-code-changes)
-for exactly when/how re-indexing happens and why it's cheap on repeated
-runs — short version: git-hook-triggered, hash-incremental, never a full
-rebuild unless you pass `--full`.
+Builds/updates the codemap (`.secondpair/index.json`): per-file symbols,
+import graph, and LLM summaries. Git-hook-triggered and hash-incremental —
+only changed files get re-indexed, never a full rebuild unless you pass
+`--full`. Needs the optional codemap dependencies installed (see Install
+above); `secondpair review` never needs this command to have been run, it
+just reviews diff-only without it.
+
+## Codemap commands
+
+Everything below needs the optional codemap dependencies installed:
+
+- `secondpair init` — write config, install git hooks, build the first index.
+- `secondpair index` — build/update the index (see above).
+- `secondpair hook <phase>` — run from a git hook (`pre-commit`/`pre-push`); installed by `init`.
+- `secondpair context <files...>` — print token-budgeted context for a set of files.
+- `secondpair query <term>` — search indexed symbols/paths (`--file` for one file's full record).
+- `secondpair setup` — wire the codemap into detected AI tools (MCP server + usage rules).
+- `secondpair mcp` — run an MCP server (stdio) exposing the codemap as tools.
 
 ## More detail
 

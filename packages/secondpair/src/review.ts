@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { detectSignals, estimateTokens, getModel, loadIndex, selectContext, structuredCall, type ContextEntry, type Signal } from "repocairn";
+import { detectSignals, estimateTokens, getModel, loadIndex, selectContext, structuredCall, type ContextEntry, type Signal } from "./codemap/index.js";
 import { isIgnored } from "./config.js";
 import { parseDiff } from "./diff/parse.js";
 import { clusterOverlapping, withFindingId } from "./finding-id.js";
@@ -169,7 +169,7 @@ export async function runReview(opts: RunReviewOptions): Promise<RunReviewOutput
       log(`Injecting context from ${selection.entries.length} codemap entries.`);
     } else {
       log(
-        "No repocairn index found (.repocairn/index.json) — reviewing diff-only. Run `repocairn init` (or `repocairn index`) and commit the index for whole-repo context.",
+        "No codemap index found (.secondpair/index.json) — reviewing diff-only. Run `secondpair init` (or `secondpair index`) and commit the index for whole-repo context.",
       );
     }
   }
@@ -185,8 +185,17 @@ export async function runReview(opts: RunReviewOptions): Promise<RunReviewOutput
     totalTokens: totalDiffTokens(files),
   };
 
-  const chunks = chunkFiles(filesToAnalyze);
+  let chunks = chunkFiles(filesToAnalyze);
   if (chunks.length > 1) log(`Large diff — splitting into ${chunks.length} review calls.`);
+  const maxChunks = opts.config.max_diff_chunks;
+  if (maxChunks != null && chunks.length > maxChunks) {
+    const skippedFiles = chunks.slice(maxChunks).flat();
+    log(
+      `Diff needs ${chunks.length} review calls, exceeding max_diff_chunks (${maxChunks}) — ` +
+        `reviewing the first ${maxChunks} and skipping ${skippedFiles.length} file(s): ${skippedFiles.map((f) => f.path).join(", ")}.`,
+    );
+    chunks = chunks.slice(0, maxChunks);
+  }
 
   const runParallel = opts.config.parallel_agents && !highLevelReview;
   if (runParallel) log("Running security/correctness/quality lenses in parallel.");

@@ -7,8 +7,15 @@
 #                                   pullrequest:write scope, used by --post to
 #                                   create inline PR comments
 #
-# Brain freshness: use `repocairn init` hooks locally (pre-commit / pre-push).
-# Commit `.repocairn/index.json`. Do not rely on CI to rebuild the index.
+# Brain freshness: use `secondpair init` hooks locally (pre-commit / pre-push).
+# Commit `.secondpair/index.json`. Do not rely on CI to rebuild the index.
+#
+# Concurrency: Bitbucket Pipelines has no per-PR queue/cancel key in YAML
+# (unlike GitHub Actions' `concurrency:` or GitLab's `resource_group:`).
+# secondpair's dedupe check is read-then-write, so two pipelines racing on
+# the same PR (rapid re-push) can both post. Mitigate at the repo level:
+# Repository settings -> Pipelines -> "Limit concurrent pipeline runs",
+# or accept the (rare, self-healing on next push) risk.
 
 pipelines:
   pull-requests:
@@ -18,13 +25,13 @@ pipelines:
           image: node:20
           script:
             - |
-              if [ ! -f .repocairn/index.json ]; then
-                echo "WARNING: .repocairn/index.json missing — diff-only review."
+              if [ ! -f .secondpair/index.json ]; then
+                echo "WARNING: .secondpair/index.json missing — diff-only review."
               fi
-            # Install the CLI. Pick one:
-            #   from npm (once published):        npm install -g secondpair
-            #   from a git remote:                npm install -g git+https://bitbucket.org/YOUR_WORKSPACE/repocairn.git
-            - npm install -g secondpair
-            - pr-review review --post --fail-on high
+            # --omit=optional: Bitbucket never needs @octokit/rest (github-only)
+            # or the codemap's tree-sitter/MCP deps. Drop --omit=optional if you
+            # also want `secondpair init`/`index` (codemap context) on this box.
+            - npm install -g secondpair --omit=optional
+            - secondpair review --post --fail-on high
           artifacts:
             - pr-review-report.json

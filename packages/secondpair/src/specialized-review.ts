@@ -1,4 +1,4 @@
-import { structuredCall } from "repocairn";
+import { structuredCall } from "./codemap/index.js";
 import {
   CORRECTNESS_LENS_SYSTEM_PROMPT,
   QUALITY_LENS_SYSTEM_PROMPT,

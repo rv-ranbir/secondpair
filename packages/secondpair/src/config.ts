@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import { z } from "zod";
-import { isIgnored as matchesIgnorePatterns, matchesGlob } from "repocairn";
+import { isIgnored as matchesIgnorePatterns, matchesGlob } from "./codemap/index.js";
 import { compileRedactPatterns } from "./redact.js";
 import { CATEGORIES, SEVERITIES, type Category, type ReviewConfig, type Severity } from "./types.js";
 
@@ -33,6 +33,7 @@ export const DEFAULT_CONFIG: ReviewConfig = {
   signal_detector: true,
   parallel_agents: true,
   semantic_dedup: true,
+  max_diff_chunks: 20,
 };
 
 const configSchema = z
@@ -61,6 +62,7 @@ const configSchema = z
     signal_detector: z.boolean().optional(),
     parallel_agents: z.boolean().optional(),
     semantic_dedup: z.boolean().optional(),
+    max_diff_chunks: z.number().int().positive().nullable().optional(),
   })
   .strict();
 
@@ -71,7 +73,7 @@ const SECONDPAIR_DIR_CANDIDATES = ["instructions.mdc", "instructions.md"];
 
 /**
  * `.secondpair/instructions.mdc` or `.secondpair/instructions.md` — same
- * convention as `.claude`/`.cursor`/`.repocairn`. Checked before
+ * convention as `.claude`/`.cursor`/`.secondpair`. Checked before
  * custom_instructions_file; wins over it when both exist.
  */
 async function findDirInstructions(cwd: string): Promise<string | null> {
@@ -157,7 +159,7 @@ export function applyCliOverrides(
   return next;
 }
 
-/** True when the path matches repocairn's built-in ignores or this config's patterns. */
+/** True when the path matches the codemap's built-in ignores or this config's patterns. */
 export function isIgnored(filePath: string, config: ReviewConfig): boolean {
   return matchesIgnorePatterns(filePath, config.ignore);
 }

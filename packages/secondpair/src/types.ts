@@ -101,6 +101,8 @@ export interface ReviewConfig {
   parallel_agents: boolean;
   /** Extra LLM pass comparing "new" findings against previously posted ones (same-file only), to catch reworded duplicates exact/soft-match reconciliation misses; also drives the intra-run overlap-dedup pass that clusters same-file, line-overlapping findings from a single run and drops same-root-cause duplicates. On by default. */
   semantic_dedup: boolean;
+  /** Cost ceiling: max diff chunks (LLM calls) per run. Extra chunks are skipped with a warning rather than billed. null disables the cap. */
+  max_diff_chunks: number | null;
 }
 
 export interface RunStats {

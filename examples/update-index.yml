@@ -1,6 +1,6 @@
-# LEGACY / DISCOURAGED — prefer local `repocairn init` hooks (pre-commit / pre-push)
-# so the brain is updated before push. repocairn is not a CI product; CI consumers
-# (secondpair) should only *read* the committed `.repocairn/index.json`.
+# LEGACY / DISCOURAGED — prefer local `secondpair init` hooks (pre-commit / pre-push)
+# so the brain is updated before push. Rebuilding the index isn't a CI job;
+# CI review runs should only *read* the committed `.secondpair/index.json`.
 #
 # Copy to .github/workflows/update-index.yml only if you still want CI to rewrite
 # the index after merges to main.
@@ -25,22 +25,24 @@ jobs:
         with:
           node-version: 24.19.0
 
-      - name: Install secondpair
-        run: npm install -g YOUR_GITHUB_USERNAME/repocairn  # or: npm i -g secondpair
+      - name: Install secondpair (codemap feature only — no octokit/MCP needed here)
+        run: |
+          npm install -g secondpair --omit=optional
+          npx secondpair install --codemap -g
 
       - name: Update codemap incrementally
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: pr-review index
+        run: secondpair index
 
       - name: Commit updated index
         run: |
-          if git diff --quiet -- .repocairn/index.json; then
+          if git diff --quiet -- .secondpair/index.json; then
             echo "Codemap unchanged."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .repocairn/index.json
-          git commit -m "chore: update repocairn index [skip ci]"
+          git add .secondpair/index.json
+          git commit -m "chore: update secondpair index [skip ci]"
           git push

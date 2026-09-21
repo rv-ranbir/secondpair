@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.js";
 
-vi.mock("repocairn", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("repocairn")>()),
+vi.mock("../src/codemap/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/codemap/index.js")>()),
   structuredCall: vi.fn(),
   getModel: () => "mock-model",
 }));
 
-import { estimateTokens, structuredCall } from "repocairn";
+import { estimateTokens, structuredCall } from "../src/codemap/index.js";
 import { runReview, totalDiffTokens } from "../src/review.js";
 import { parseDiff } from "../src/diff/parse.js";
 import { HIGH_LEVEL_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT } from "../src/llm/prompt.js";
@@ -101,13 +101,13 @@ describe("totalDiffTokens", () => {
 });
 
 describe("blastRadius", () => {
-  it("matches selectContext's importer entries when a repocairn index is present", async () => {
+  it("matches selectContext's importer entries when a codemap index is present", async () => {
     const fs = await import("node:fs/promises");
     const os = await import("node:os");
     const path = await import("node:path");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pr-review-blast-radius-"));
     try {
-      await fs.mkdir(path.join(dir, ".repocairn"), { recursive: true });
+      await fs.mkdir(path.join(dir, ".secondpair"), { recursive: true });
       const index = {
         version: 1,
         generatedAt: new Date().toISOString(),
@@ -116,7 +116,7 @@ describe("blastRadius", () => {
           "src/app.ts": { symbols: ["export const APP"], imports: ["src/math.ts"], summary: "imports math" },
         },
       };
-      await fs.writeFile(path.join(dir, ".repocairn", "index.json"), JSON.stringify(index));
+      await fs.writeFile(path.join(dir, ".secondpair", "index.json"), JSON.stringify(index));
 
       mockedCall.mockResolvedValue({ summary: "s", findings: [] });
 

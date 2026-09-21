@@ -1,8 +1,19 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import pc from "picocolors";
-import { getModel, runIndex } from "repocairn";
+import {
+  getFileInfo,
+  getModel,
+  indexPath,
+  loadIndex,
+  searchSymbols,
+  selectContext,
+  runSetup,
+  TARGETS,
+} from "./codemap/index.js";
+import { FEATURE_PACKAGES, FEATURES, resolvePackageSpecs } from "./install-features.js";
 import {
   getBbPrDiff,
   getBbPrHeadSha,
@@ -24,14 +35,7 @@ import {
 import { resolveGlRef, type GlRef } from "./gitlab/auth.js";
 import type { GlDiffRefs } from "./gitlab/comments.js";
 import { applyCliOverrides, loadConfig } from "./config.js";
-import {
-  getPrDiff,
-  getPrHeadSha,
-  listChangedFiles,
-  makeOctokit,
-  parseRepoSlug,
-  type PrRef,
-} from "./diff/github.js";
+import { parseRepoSlug, type PrRef } from "./diff/github-ref.js";
 import { resolveGhRepoSlug, resolveGhToken } from "./github/auth.js";
 import { getLocalDiff } from "./diff/local.js";
 import {
@@ -86,14 +90,49 @@ function splitFindingsSinceLastReview(
 const program = new Command();
 const log = (msg: string) => console.error(pc.dim(msg));
 
+/** Load a module behind an optional dependency (tree-sitter/MCP SDK/octokit),
+ * failing with a friendly message if it isn't installed. */
+async function loadHeavy<T>(
+  specifier: string,
+  load: () => Promise<T>,
+  kind: "codemap" | "github" = "codemap",
+): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const feature = kind === "github" ? "GitHub PR" : "codemap";
+    throw new Error(
+      `This command needs secondpair's optional ${feature} dependencies (missing: ${specifier}). ` +
+        `Install them with: npm install --include=optional secondpair\n${msg}`,
+    );
+  }
+}
+
+async function requireIndex(cwd: string) {
+  const index = await loadIndex(cwd);
+  if (!index) {
+    throw new Error(`No index at ${indexPath(cwd)}. Run \`secondpair index\` first.`);
+  }
+  return index;
+}
+
+function resolveLlmFlag(configLlm: boolean): boolean {
+  if (process.argv.includes("--no-llm")) return false;
+  if (process.argv.includes("--llm")) return true;
+  return configLlm;
+}
+
 program
   .name("secondpair")
-  .description("secondpair — the second pair of eyes: LLM PR reviewer with a persistent repo memory (repocairn) for whole-project context")
+  .description(
+    "secondpair — the second pair of eyes: LLM PR reviewer with an optional persistent repo memory (codemap) for whole-project context",
+  )
   .version("0.1.0");
 
 program
   .command("index")
-  .description("Build or incrementally update the repo memory (.repocairn/index.json)")
+  .description("Build or incrementally update the repo memory (.secondpair/index.json)")
   .option("--full", "re-index every file regardless of content hash", false)
   .option("--no-llm", "skip LLM summaries (symbols + import graph only; no API key needed)")
   .option("--dir <path>", "repository root", process.cwd())
@@ -101,6 +140,7 @@ program
   .action(async (opts) => {
     const cwd = path.resolve(opts.dir);
     const config = await loadConfig(cwd, opts.config);
+    const { runIndex } = await loadHeavy("tree-sitter", () => import("./codemap/index-command.js"));
     const stats = await runIndex({
       cwd,
       full: opts.full,
@@ -113,6 +153,175 @@ program
         `Codemap updated: ${stats.indexed} indexed, ${stats.unchanged} unchanged, ${stats.removed} removed (${stats.total} files).`,
       ),
     );
+  });
+
+program
+  .command("init")
+  .description("Set up the codemap: config, git hooks, first index")
+  .option("--yml", "write .secondpair.yml instead of package.json#secondpair")
+  .option("--no-hooks", "skip installing git hooks")
+  .option("--no-index", "skip building the initial index")
+  .option("--force", "overwrite existing config/hooks")
+  .option("--dir <path>", "repository root", process.cwd())
+  .action(async (opts) => {
+    const { runInit } = await loadHeavy("tree-sitter", () => import("./codemap/init.js"));
+    const cwd = path.resolve(opts.dir);
+    const result = await runInit(cwd, {
+      yml: opts.yml,
+      noHooks: !opts.hooks,
+      noIndex: !opts.index,
+      force: opts.force,
+      log,
+    });
+    for (const s of result.steps) console.log(pc.green(`✔ ${s}`));
+    console.log(
+      pc.dim(
+        "Next: commit .secondpair/index.json so agents & CI can read the brain. Optional: secondpair setup",
+      ),
+    );
+  });
+
+program
+  .command("hook <phase>")
+  .description("Run from git hooks: pre-commit | pre-push")
+  .option("--dir <path>", "repository root", process.cwd())
+  .action(async (phase: string, opts) => {
+    if (phase !== "pre-commit" && phase !== "pre-push") {
+      throw new Error(`Unknown hook phase "${phase}". Use pre-commit or pre-push.`);
+    }
+    const cwd = path.resolve(opts.dir);
+    let stdinText = "";
+    if (phase === "pre-push" && !process.stdin.isTTY) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+      stdinText = Buffer.concat(chunks).toString("utf8");
+    }
+    const { runHook } = await loadHeavy("tree-sitter", () => import("./codemap/hooks.js"));
+    const result = await runHook(cwd, phase as "pre-commit" | "pre-push", { stdinText, log });
+    if (result.skipped && result.reason && result.reason !== "no paths") {
+      log(`Skipped: ${result.reason}`);
+    }
+    if (result.stats) {
+      console.log(
+        pc.green(
+          `Index updated: ${result.stats.indexed} indexed, ${result.stats.removed} removed (${result.stats.total} files).`,
+        ),
+      );
+    }
+  });
+
+program
+  .command("context <files...>")
+  .description("Print token-budgeted repo context (importers, imports, summaries) given files")
+  .option("--budget <tokens>", "approximate token budget", (v) => parseInt(v, 10), 8000)
+  .option("--dir <path>", "repository root", process.cwd())
+  .action(async (files: string[], opts) => {
+    const index = await requireIndex(path.resolve(opts.dir));
+    const { entries, rendered } = selectContext(index, files, opts.budget);
+    if (entries.length === 0) {
+      console.log(pc.yellow("No context found for those files in the index."));
+      return;
+    }
+    console.log(rendered);
+  });
+
+program
+  .command("query <term>")
+  .description(
+    "Search indexed file paths & exported symbols; use `query <path> --file` for one file's full record",
+  )
+  .option("--file", "treat term as an exact file path and print its full record", false)
+  .option("--limit <n>", "max results", (v) => parseInt(v, 10), 20)
+  .option("--dir <path>", "repository root", process.cwd())
+  .action(async (term: string, opts) => {
+    const index = await requireIndex(path.resolve(opts.dir));
+    if (opts.file) {
+      const info = getFileInfo(index, term);
+      if (!info) throw new Error(`"${term}" not in index.`);
+      console.log(JSON.stringify(info, null, 2));
+      return;
+    }
+    const matches = searchSymbols(index, term, opts.limit);
+    if (matches.length === 0) {
+      console.log(pc.yellow(`No matches for "${term}".`));
+      return;
+    }
+    for (const m of matches) {
+      console.log(pc.bold(m.path));
+      for (const s of m.symbols) console.log(`  ${s}`);
+      if (m.summary) console.log(pc.dim(`  ${m.summary}`));
+    }
+  });
+
+program
+  .command("setup")
+  .description("Wire secondpair's codemap into detected AI tools (MCP server + usage rules)")
+  .option("-t, --target <id>", "force a specific target instead of auto-detecting", (v, acc: string[]) => [...acc, v], [])
+  .option("--list", "list known target ids")
+  .option("--dir <path>", "repository root", process.cwd())
+  .action(async (opts) => {
+    if (opts.list) {
+      for (const t of TARGETS) console.log(`${t.id.padEnd(10)} ${t.label}`);
+      return;
+    }
+    const steps = await runSetup(path.resolve(opts.dir), { targets: opts.target });
+    if (steps.length === 0) {
+      console.log(pc.green("Already set up — nothing to do."));
+      return;
+    }
+    for (const s of steps) console.log(pc.green(`✔ ${s}`));
+    console.log(pc.dim("Commit these files so the whole team shares the memory."));
+  });
+
+program
+  .command("install")
+  .description(
+    "Install optional feature dependencies selectively (default install pulls in all of them)",
+  )
+  .option("--github", "PR review on GitHub (@octokit/rest)", false)
+  .option("--bitbucket", "PR review on Bitbucket (no extra deps)", false)
+  .option("--gitlab", "PR review on GitLab (no extra deps)", false)
+  .option("--codemap", "indexing (tree-sitter/wasm)", false)
+  .option("--mcp", "MCP server (@modelcontextprotocol/sdk)", false)
+  .option("--all", "every feature", false)
+  .option("-g, --global", "install globally (npm install -g)", false)
+  .option("--dry-run", "print the npm command instead of running it", false)
+  .action(async (opts) => {
+    const selected = opts.all
+      ? FEATURES
+      : FEATURES.filter((f) => opts[f as keyof typeof opts]);
+    if (selected.length === 0) {
+      console.log(`Pick at least one feature: ${FEATURES.map((f) => `--${f}`).join(" ")} (or --all).`);
+      return;
+    }
+    const noOp = selected.filter((f) => FEATURE_PACKAGES[f].length === 0);
+    for (const f of noOp) console.log(pc.dim(`${f}: no extra dependencies needed.`));
+    const specs = resolvePackageSpecs(selected);
+    if (specs.length === 0) return;
+
+    const args = ["install", ...(opts.global ? ["-g"] : []), ...specs];
+    if (opts.dryRun) {
+      console.log(`npm ${args.join(" ")}`);
+      return;
+    }
+    log(`Running: npm ${args.join(" ")}`);
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn("npm", args, { stdio: "inherit", shell: process.platform === "win32" });
+      child.on("error", reject);
+      child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`npm install exited ${code}`))));
+    });
+  });
+
+program
+  .command("mcp")
+  .description("Run an MCP server (stdio) exposing repo memory AI tools")
+  .option("--dir <path>", "repository root", process.cwd())
+  .action(async (opts) => {
+    const { runMcpServer } = await loadHeavy(
+      "@modelcontextprotocol/sdk",
+      () => import("./codemap/mcp.js"),
+    );
+    await runMcpServer(path.resolve(opts.dir));
   });
 
 program
@@ -154,7 +363,8 @@ program
     let diffText: string;
     let changeDescription: string;
     let prRef: PrRef | null = null;
-    let octokit: ReturnType<typeof makeOctokit> | null = null;
+    let octokit: import("@octokit/rest").Octokit | null = null;
+    let githubDiff: typeof import("./diff/github.js") | null = null;
     let bbRef: BbRef | null = null;
     let glRef: GlRef | null = null;
     let glDiffRefs: GlDiffRefs | null = null;
@@ -173,10 +383,11 @@ program
       changeDescription = `PR #${bbRef.prId} in ${bbRef.workspace}/${bbRef.repoSlug}`;
     } else if (opts.pr != null) {
       const slug = resolveGhRepoSlug(opts.repo);
-      octokit = makeOctokit(resolveGhToken());
+      githubDiff = await loadHeavy("@octokit/rest", () => import("./diff/github.js"), "github");
+      octokit = githubDiff.makeOctokit(resolveGhToken());
       prRef = { ...parseRepoSlug(slug), pull_number: opts.pr };
       log(`Fetching diff for ${slug}#${opts.pr}…`);
-      diffText = await getPrDiff(octokit, prRef);
+      diffText = await githubDiff.getPrDiff(octokit, prRef);
       changeDescription = `PR #${opts.pr} in ${slug}`;
     } else {
       diffText = await getLocalDiff({ cwd, staged: opts.staged, base: opts.base });
@@ -252,14 +463,14 @@ program
           } else {
             for (const id of await listBbFindingIds(bbRef)) previousIds.add(id);
           }
-        } else if (prRef && octokit) {
-          currentHeadSha = await getPrHeadSha(octokit, prRef);
+        } else if (prRef && octokit && githubDiff) {
+          currentHeadSha = await githubDiff.getPrHeadSha(octokit, prRef);
           const prev = await getReviewState(octokit, prRef);
           if (prev) {
             changedFiles = splitFindingsSinceLastReview(
               prev,
               currentHeadSha,
-              await listChangedFiles(octokit, prRef, prev.headSha, currentHeadSha),
+              await githubDiff.listChangedFiles(octokit, prRef, prev.headSha, currentHeadSha),
               previousIds,
               previousFindings,
               carryForwardFindings,
@@ -315,8 +526,8 @@ program
         await postGlReview({ ref: glRef, diffRefs: glDiffRefs, result, failed, log });
       } else if (bbRef) {
         await postBbReview({ ref: bbRef, result, failed, headSha: currentHeadSha, log });
-      } else if (prRef && octokit) {
-        const headSha = currentHeadSha ?? (await getPrHeadSha(octokit, prRef));
+      } else if (prRef && octokit && githubDiff) {
+        const headSha = currentHeadSha ?? (await githubDiff.getPrHeadSha(octokit, prRef));
         await postReview({ octokit, pr: prRef, headSha, result, failed, log });
       } else {
         throw new Error("--post requires a PR (--pr, or Bitbucket/GitLab CI env vars).");

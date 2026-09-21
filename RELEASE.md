@@ -1,11 +1,11 @@
 # Release guide
 
-`repocairn` and `secondpair` use synchronized versions. A semantic-version tag
+`secondpair` is a single npm package. A semantic-version tag on `main`
 starts the automated npm and GitHub release workflow.
 
 ## 0. Before the first public commit
 
-Repo identity is set: `LICENSE` and both `package.json` (`author`,
+Repo identity is set: `LICENSE` and `package.json` (`author`,
 `repository`, `homepage`, `bugs`) point to `github.com/rv-ranbir/ai-tools`.
 `YOUR_WORKSPACE` in `examples/bitbucket-pipelines.yml` is intentionally
 left as a placeholder — that one's a user-fill-in example, not this repo's
@@ -13,12 +13,11 @@ own identity.
 
 Checklist:
 - [x] `LICENSE` added (MIT)
-- [x] `repository`/`author`/`homepage`/`bugs`/`keywords` added to both `package.json`
-- [x] `secondpair`'s `repocairn` dependency pinned to the synchronized package version
+- [x] `repository`/`author`/`homepage`/`bugs`/`keywords` added to `package.json`
 - [x] Secrets scan: no real keys in tracked files (only redaction-test fixtures, obviously fake — `AKIAIOSFODNN7EXAMPLE` etc.); `.cursor-key` is gitignored and untracked
 - [x] `.claude/settings.local.json` and `docs/superpowers/` untracked + gitignored (internal dev-process notes, not user-facing)
-- [x] `npm run typecheck && npm test` — clean, 149 tests passing
-- [ ] Decide npm scope: unscoped (`repocairn`, `secondpair` — check name isn't taken) or scoped (`@you/repocairn`)
+- [x] `npm run typecheck && npm test` — clean
+- [ ] Decide npm scope: unscoped (`secondpair` — check name isn't taken) or scoped (`@you/secondpair`)
 - [ ] `npm whoami` — confirm logged into the right npm account
 - [ ] Create the public GitHub repo, push
 - [ ] Fill the "screenshot goes here" placeholder in root `README.md`
@@ -26,34 +25,29 @@ Checklist:
 
 ## 1. Automated npm and GitHub release
 
-Prepare one reviewed change that:
+Prepare one reviewed change that bumps `packages/secondpair/package.json`'s
+`version` and passes CI (`.github/workflows/ci.yml`: security check,
+typecheck, test, smoke test, packed-consumer check).
 
-1. Sets both package versions to the same semantic version.
-2. Sets `secondpair`'s `repocairn` dependency to `^<that version>`.
-3. Passes CI.
-
-`npm run security` must pass with zero known vulnerabilities. It also proves
-that `repocairn` and `secondpair` resolve as local workspace links.
-`npm run security:consumers` packs both packages, installs the tarballs in
-clean temporary projects with no consumer override, verifies that the bundled
-MCP SDK resolves `@hono/node-server@2.0.12`, and requires each consumer's
+`npm run security` must pass with zero known vulnerabilities.
+`npm run security:consumers` packs the package, installs the tarball in a
+clean temporary project with no consumer override, and requires
 `npm audit --json` total to be zero.
 
 Push a matching tag such as `v1.2.3` or prerelease tag such as
-`v1.2.3-beta.1`. The tag must point at the reviewed commit. Floating tags such
-as `v1` do not trigger npm publishing.
+`v1.2.3-beta.1`. The tag must match `packages/secondpair/package.json`'s
+version exactly, or the release workflow's tag-check step fails it. Floating
+tags such as `v1` do not trigger npm publishing.
 
-The release workflow installs and validates dependencies without credentials,
-checks all three versions/ranges, explicitly builds both packages, and uploads
-the packed tarballs. A separate privileged job downloads only those tarballs,
-publishes `repocairn` before `secondpair`, then creates the GitHub Release.
-On retry, an existing npm version is skipped only when its registry SHA-1
-matches the validated tarball; a mismatch aborts the synchronized release.
-GitHub Releases that already exist are skipped.
-Prereleases use npm's `next` dist-tag and GitHub's prerelease flag; stable
-versions use npm's `latest` dist-tag.
+The release workflow (`.github/workflows/release.yml`) runs on `workflow_run`
+after CI succeeds on `main`: builds the package, packs it, uploads the
+tarball as an artifact, then a separate `publish` job downloads only that
+tarball and publishes it. If the version is already on the registry, it's
+skipped only when its registry SHA-1 matches the validated tarball; a
+mismatch aborts. Prereleases use npm's `next` dist-tag and GitHub's
+prerelease flag; stable versions use npm's `latest` dist-tag.
 
-Before pushing a tag, inspect the package payloads locally:
+Before pushing a tag, inspect the package payload locally:
 
 ```bash
 npm ci
@@ -62,12 +56,14 @@ npm run build
 npm run security:consumers
 ```
 
-After publishing, users can run `npx repocairn init` and
-`npx secondpair review --staged`.
+After publishing, users can run `npx secondpair init` and
+`npx secondpair review --staged`. For a partial install (e.g. bitbucket-only,
+skipping octokit/tree-sitter), see `secondpair install` in
+`packages/secondpair/AGENTS.md`.
 
 ## 2. Publish the GitHub Action to Marketplace
 
-`action.yml` (root) already defines a composite/Docker action — that's the
+`action.yml` (root) already defines a composite action — that's the
 CI-native release path. Marketplace's floating major tag is separate from the
 immutable semantic tag that triggers npm publishing:
 
@@ -85,15 +81,16 @@ should match.
 
 ## 3. Publish as an MCP server (an "AI tool" for assistants)
 
-`repocairn` already ships an MCP server (`src/mcp.ts`, bin `repocairn mcp`).
-Once step 1 is done, any MCP client can add it without a local install:
+`secondpair` already ships an MCP server (`src/codemap/mcp.ts`, bin
+`secondpair mcp`, part of the optional codemap feature). Once step 1 is
+done, any MCP client can add it without a local install:
 
 ```bash
-claude mcp add repocairn -- npx repocairn mcp
+claude mcp add secondpair -- npx secondpair mcp
 ```
 
 This exposes `get_context`, `search_symbols`, `file_info` over the repo's
-committed `.repocairn/index.json` — already documented in root `README.md`
+committed `.secondpair/index.json` — already documented in root `README.md`
 under "How the memory works". Optional extra reach: submit to a community
 MCP registry (e.g. the `modelcontextprotocol/servers` list, or Smithery) by
 following that registry's own PR/submission process — points at your
@@ -132,4 +129,4 @@ versions — check current docs before building this path, rather than
 trusting a hardcoded schema here.
 
 Either way, the skill is a thin wrapper that shells out to the npm-published
-`secondpair`/`repocairn` CLIs from step 1 — publish those first.
+`secondpair` CLI from step 1 — publish that first.

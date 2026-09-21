@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Portable CI recipe — any pipeline that can run bash + Node 20.
-# Does NOT run repocairn index in CI. Expect `.repocairn/index.json` committed.
+# Does NOT run secondpair index in CI. Expect `.secondpair/index.json` committed.
+#
+# Concurrency: secondpair's dedupe check is read-then-write, so two runs
+# racing on the same PR (rapid re-push) can both post. Configure your CI
+# system to queue/cancel same-PR runs of this job (GitHub Actions:
+# `concurrency:`; GitLab: `resource_group:`; others: check your platform's
+# per-branch/per-PR concurrency control).
 set -euo pipefail
 
 : "${ANTHROPIC_API_KEY:=${OPENAI_API_KEY:-${OPENROUTER_API_KEY:-}}}"
@@ -22,8 +28,8 @@ else
   npm install -g secondpair
 fi
 
-if [ ! -f .repocairn/index.json ]; then
-  echo "WARNING: .repocairn/index.json missing — reviewing diff-only. Run \`repocairn init\` locally and commit the index." >&2
+if [ ! -f .secondpair/index.json ]; then
+  echo "WARNING: .secondpair/index.json missing — reviewing diff-only. Run \`secondpair init\` locally and commit the index." >&2
 fi
 
 ARGS=(review --fail-on "${FAIL_ON:-high}" --json pr-review-report.json)
@@ -35,4 +41,4 @@ elif [ -n "${BITBUCKET_PR_ID:-}" ]; then
   ARGS+=(--post --host bitbucket)
 fi
 
-pr-review "${ARGS[@]}"
+secondpair "${ARGS[@]}"

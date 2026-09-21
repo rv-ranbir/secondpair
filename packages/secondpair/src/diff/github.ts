@@ -1,16 +1,8 @@
 import { Octokit } from "@octokit/rest";
+import type { PrRef } from "./github-ref.js";
 
-export interface PrRef {
-  owner: string;
-  repo: string;
-  pull_number: number;
-}
-
-export function parseRepoSlug(slug: string): { owner: string; repo: string } {
-  const [owner, repo] = slug.split("/");
-  if (!owner || !repo) throw new Error(`Invalid repo slug "${slug}" — expected owner/name.`);
-  return { owner, repo };
-}
+export type { PrRef } from "./github-ref.js";
+export { parseRepoSlug } from "./github-ref.js";
 
 export function makeOctokit(token: string | undefined): Octokit {
   if (!token) {

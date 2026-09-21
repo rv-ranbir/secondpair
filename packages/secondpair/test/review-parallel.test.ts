@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.js";
 
-vi.mock("repocairn", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("repocairn")>()),
+vi.mock("../src/codemap/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/codemap/index.js")>()),
   structuredCall: vi.fn(),
   getModel: () => "mock-model",
 }));
 
-import { structuredCall } from "repocairn";
+import { structuredCall } from "../src/codemap/index.js";
 import {
   CORRECTNESS_LENS_SYSTEM_PROMPT,
   HIGH_LEVEL_SYSTEM_PROMPT,

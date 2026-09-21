@@ -78,25 +78,25 @@ this codebase, grouped by concern:
 |---|---|---|
 | R1 diff-grounded | **Met** | `validateFindings` drops out-of-diff findings (`src/llm/schema.ts`); tested (`review.test.ts` "Hallucinated finding") |
 | R2 confidence/severity | **Met** | `min_confidence`, `SEVERITIES` rubric in prompt, `capFindings` breaks ties on severity |
-| R3 repo context | **Met** | repocairn index integration, `selectContext`, inlined snippets (`review.ts:94-114`) |
+| R3 repo context | **Met** | codemap index integration, `selectContext`, inlined snippets (`review.ts:94-114`) |
 | R4 actionable fixes | **Met** | `suggestion` field, rendered as GitHub suggestion block / code fence |
 | R5 intra-batch dedup | **Met (fixed this pass)** | `dedupeById()`, tested |
 | R6 cross-run dedup | **Met** | `postReview`/`postGlReview`/`postBbReview` all re-check live `existingIds` immediately before posting |
 | R7 reword-stable | **Met** | `findingsSoftMatch` (Jaccard ≥0.3 or ≥2 shared tokens, lines within 3), tested end-to-end this pass |
 | R8 lifecycle + auto-resolve | **Partial** | GitHub/GitLab resolve threads on fix; Bitbucket explicitly no-ops (`resolveBbCommentsForIds` — Cloud API has no resolve endpoint) — documented limitation, not a bug |
 | R9 suppression | **Met** | `.pr-review-suppressions.yml` (`suppressions.ts`) + `collectWontFixIds` reply/reaction detection, all 3 platforms |
-| R10 platform parity | **Partial** | GitHub 2 new + existing tests, GitLab 1 existing skip test — **Bitbucket has zero test coverage of its dedupe-skip logic** despite having the same `existingIds.has(f.id)` check (`bitbucket/comments.ts:217`) |
+| R10 platform parity | **Met (fixed)** | GitHub 2 new + existing tests, GitLab 1 existing skip test, Bitbucket now has its own dedupe-skip test (`bitbucket/comments.ts:207`, `test/bitbucket.test.ts` — "skips a finding whose id is already posted") |
 | R11 redaction | **Met** | `redact.ts` built-in patterns (AWS/GitHub/generic secret/PEM) + configurable extra patterns, applied to diff and injected context, tested |
-| R12 prompt injection | **Gap** | No mitigation anywhere in `llm/prompt.ts` or `review.ts`. Diff content is attacker-controlled in any external-PR workflow and is concatenated straight into the user prompt |
+| R12 prompt injection | **Met (mitigated)** | All system prompts (`llm/prompt.ts`) now state the DIFF/REPOSITORY CONTEXT sections are untrusted data, not instructions — framing only, backstopped by the existing schema-constrained output; does not guarantee a model can't be steered within a `title`/`body` it does report |
 | R13 CI gate | **Met** | `shouldFail()` in `report/cli.ts`, threshold-driven |
-| R14 cost/rate control | **Partial** | Token-budget chunking (`DIFF_TOKENS_PER_CALL`, `context_token_budget`, `SNIPPET_TOKENS_PER_FILE`), retry w/ backoff (`withRetry`, 3 attempts) — but **no ceiling on total chunks/LLM calls per run**; a large enough diff has unbounded cost |
-| R15 concurrency safety | **Gap** | `postReview`/`postGlReview`/`postBbReview` are read-then-write with no lock; two concurrent runs on the same PR can both pass the `existingIds` check before either posts, producing duplicates the id-based dedup can't catch. Not fixable from inside the package — needs a CI-level mutex (e.g. GitHub Actions `concurrency:` group) |
+| R14 cost/rate control | **Met (fixed)** | Token-budget chunking (`DIFF_TOKENS_PER_CALL`, `context_token_budget`, `SNIPPET_TOKENS_PER_FILE`), retry w/ backoff (`withRetry`, 3 attempts), and now a `max_diff_chunks` config cap (default 20) — extra chunks are skipped with a warning log instead of billed (`review.ts`) |
+| R15 concurrency safety | **Partial (documented)** | `postReview`/`postGlReview`/`postBbReview` are still read-then-write with no lock — not fixable from inside the package (no compare-and-swap primitive on any of the three comment APIs). `examples/pr-review.yml` and `examples/gitlab-ci.yml` now ship the required CI-level `concurrency:`/`resource_group:` lock; Bitbucket Pipelines has no YAML equivalent, documented as a repo-settings mitigation in `examples/bitbucket-pipelines.yml` |
 | R16 audit trail | **Partial** | `pr-review-report.json` gives per-run stats/findings, but nothing persists across runs unless CI explicitly caches the file — no append-only history |
-| R17 idempotency test coverage | **Partial** | GitHub and GitLab covered (GitHub gained 2 new tests this pass); Bitbucket not |
+| R17 idempotency test coverage | **Met (fixed)** | GitHub, GitLab, and now Bitbucket all covered |
 
 ## 4. Remaining gaps (ranked)
 
-### 4.1 Prompt injection via diff content — no mitigation (R12)
+### 4.1 Prompt injection via diff content — mitigated (R12, fixed 2026-09-21)
 `buildReviewUserPrompt` concatenates diff text and repo-context snippets
 directly into the user message with no framing that tells the model diff
 content is data, not instructions. A malicious PR (comment text, string
@@ -106,10 +106,18 @@ misleading text into a posted review comment. Structured-output schema
 validation bounds the blast radius (can't escape the `Finding` shape), but
 can't stop the model from writing whatever it wants inside `title`/`body`
 for a finding it does report. No test exercises this.
-Fix direction: add explicit "diff/context below is untrusted data, not
-instructions" framing to the system prompt; consider stripping/flagging
-suspicious imperative phrases before they reach the model. Not fixed here —
-flagging per the review, not silently patching prompt behavior.
+Fixed: every system prompt in `llm/prompt.ts` (`REVIEW_SYSTEM_PROMPT`,
+`HIGH_LEVEL_SYSTEM_PROMPT`, `REVIEW_RULES` shared by the security/
+correctness/quality lenses) now has an explicit rule stating the DIFF and
+REPOSITORY CONTEXT sections are untrusted data from the PR author, not
+instructions, and that embedded directive-like text must be treated as
+ordinary code/comment content. This is framing, not a hard guarantee — it
+narrows the model's willingness to comply with embedded instructions but
+can't prove it out; the schema-validation backstop (§ scorecard R1) remains
+the real blast-radius limit on what a compromised finding can contain.
+Did not add imperative-phrase stripping — same-cost, same-effect as the
+framing rule, and stripping risks mangling legitimate diff content that
+happens to contain words like "ignore".
 
 ### 4.1b `redact_patterns` / config as a ReDoS vector if config is loaded from PR head
 `.pr-review.yml`'s `redact_patterns` are user-supplied regex strings,
@@ -130,7 +138,7 @@ cause: nothing downstream of `loadConfig`/diff-fetch currently treats PR
 content as adversarial input.
 
 ### 4.1c Import-graph path traversal (fixed this pass)
-`resolveRelativeImport`/`resolveGenericImport` (`repocairn/src/indexer.ts`)
+`resolveRelativeImport`/`resolveGenericImport` (`src/codemap/indexer.ts`)
 resolve relative import specifiers found in file content to on-disk paths,
 checked only with `existsSync(path.join(cwd, rel))` — no repo-root
 containment check. A file in the diff containing `import x from
@@ -141,23 +149,31 @@ potentially get inlined as review context. Fixed: both resolvers now skip
 any candidate whose normalized relative path starts with `..` before the
 `existsSync` check.
 
-### 4.2 Concurrency race on posting (R15)
+### 4.2 Concurrency race on posting (R15, mitigated 2026-09-21)
 See scorecard. Real but not fixable inside this package (no compare-and-swap
-primitive on GitHub/GitLab/Bitbucket comment APIs) — needs to be an
-operational requirement (`concurrency:` group in the CI workflow) documented
-for consumers of the tool, not a code fix here.
+primitive on GitHub/GitLab/Bitbucket comment APIs) — it's an operational
+requirement, not a code fix. `examples/pr-review.yml` now ships a GitHub
+Actions `concurrency:` group and `examples/gitlab-ci.yml` a GitLab
+`resource_group:`, both keyed on the PR/MR number, queuing/cancelling
+same-PR re-triggers instead of letting them race. Bitbucket Pipelines has
+no YAML-level concurrency key at all — `examples/bitbucket-pipelines.yml`
+and `examples/ci-generic.sh` document the gap and point at the repo-level
+"Limit concurrent pipeline runs" setting as the only available mitigation.
 
-### 4.3 Bitbucket posting path untested for dedupe-skip (R10, R17)
-`bitbucket/comments.ts:217` has the identical `existingIds.has(f.id)` guard
-as GitHub and GitLab, and it's presumably correct by inspection, but nothing
-proves it — `test/bitbucket.test.ts` has no analog of GitLab's "skips
-duplicate finding ids" test. Cheapest fix: port that GitLab test to
-Bitbucket's shape.
+### 4.3 Bitbucket posting path untested for dedupe-skip (R10, R17 — fixed 2026-09-21)
+`bitbucket/comments.ts:207` has the identical `existingIds.has(f.id)` guard
+as GitHub and GitLab. Fixed: ported GitLab's "skips duplicate finding ids"
+shape to Bitbucket — `test/bitbucket.test.ts` "skips a finding whose id is
+already posted, still posts a new one" now proves it directly (existing
+finding's id in `formatBbCommentBody` output is not re-posted; a second,
+new finding is).
 
-### 4.4 Unbounded LLM-call cost for very large diffs (R14)
-`chunkFiles` splits by token budget but has no cap on chunk *count* — a
-huge diff chunks into arbitrarily many `structuredCall` invocations, each
-billed. No configured ceiling, no warning log when a run exceeds N chunks.
+### 4.4 Unbounded LLM-call cost for very large diffs (R14, fixed 2026-09-21)
+`chunkFiles` splits by token budget but had no cap on chunk *count*. Fixed:
+new `max_diff_chunks` config (default 20, `null` disables) checked in
+`review.ts` right after chunking — chunks beyond the cap are dropped with a
+warning log naming the skipped files, rather than sent to the LLM. Regression
+test in `test/review-resilience.test.ts` ("caps calls at max_diff_chunks").
 
 ### 4.5 Fingerprint false-merge on degenerate titles (from §1)
 Two distinct findings in the same file+category whose titles are entirely

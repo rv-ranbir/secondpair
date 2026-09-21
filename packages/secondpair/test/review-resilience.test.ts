@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.js";
 
-vi.mock("repocairn", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("repocairn")>()),
+vi.mock("../src/codemap/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/codemap/index.js")>()),
   structuredCall: vi.fn(),
   getModel: () => "mock-model",
 }));
 
-import { structuredCall } from "repocairn";
+import { structuredCall } from "../src/codemap/index.js";
 import { runReview } from "../src/review.js";
 
 const mockedCall = vi.mocked(structuredCall);
@@ -92,6 +92,25 @@ describe("chunking large diffs", () => {
     expect(result.summary).toContain("chunk 1");
     expect(result.summary).toContain("chunk 2");
   }, 20_000);
+
+  it("caps calls at max_diff_chunks, skipping the rest with a warning", async () => {
+    const diffText = [bigDiff("src/a.ts", 9000), bigDiff("src/b.ts", 9000)].join("\n");
+    mockedCall.mockResolvedValueOnce({ summary: "chunk 1: touched a.ts", findings: [] });
+    const log = vi.fn();
+
+    const result = await runReview({
+      cwd: process.cwd(),
+      diffText,
+      config: { ...DEFAULT_CONFIG, parallel_agents: false, max_diff_chunks: 1 },
+      changeDescription: "big diff",
+      useContext: false,
+      log,
+    });
+
+    expect(mockedCall).toHaveBeenCalledTimes(1);
+    expect(result.stats.llmCalls).toBe(1);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/exceeding max_diff_chunks \(1\).*src\/b\.ts/));
+  }, 20_000);
 });
 
 describe("retry on transient LLM failure", () => {
@@ -148,7 +167,7 @@ describe("renderSnippets with a missing context file", () => {
     const path = await import("node:path");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pr-review-missing-snip-"));
     try {
-      await fs.mkdir(path.join(dir, ".repocairn"), { recursive: true });
+      await fs.mkdir(path.join(dir, ".secondpair"), { recursive: true });
       await fs.mkdir(path.join(dir, "src"), { recursive: true });
       await fs.writeFile(path.join(dir, "src", "math.ts"), "export function sum() {}\n");
       // app.ts is in the index but deliberately not written to disk.
@@ -160,7 +179,7 @@ describe("renderSnippets with a missing context file", () => {
           "src/app.ts": { symbols: ["export const APP"], imports: [], summary: "app entry (file missing on disk)" },
         },
       };
-      await fs.writeFile(path.join(dir, ".repocairn", "index.json"), JSON.stringify(index));
+      await fs.writeFile(path.join(dir, ".secondpair", "index.json"), JSON.stringify(index));
 
       mockedCall.mockResolvedValue({ summary: "s", findings: [] });
 

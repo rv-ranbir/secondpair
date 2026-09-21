@@ -171,6 +171,54 @@ describe("resolveBbCommentsForIds", () => {
   });
 });
 
+describe("postBbReview dedupe", () => {
+  it("skips a finding whose id is already posted, still posts a new one", async () => {
+    withEnv({ BITBUCKET_TOKEN: "tok" });
+    const log = vi.fn();
+    const existingFinding = { ...finding, id: "aabbccddeeff0011" };
+    const newFinding: Finding = {
+      file: "src/b.ts",
+      start_line: 1,
+      end_line: 1,
+      severity: "high",
+      category: "bug",
+      confidence: 0.9,
+      title: "New bug",
+      body: "y",
+      suggestion: null,
+      id: "1122334455667788",
+    };
+
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (!init?.method) {
+        return {
+          ok: true,
+          json: async () => ({ values: [{ id: 1, content: { raw: formatBbCommentBody(existingFinding) } }] }),
+          headers: { get: () => null },
+          text: async () => "",
+        };
+      }
+      return { ok: true, json: async () => ({}), headers: { get: () => null }, text: async () => "" };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result: ReviewResult = {
+      summary: "s",
+      findings: [existingFinding, newFinding],
+      dropped: [],
+      findingsToPost: [existingFinding, newFinding],
+      reconciliation: { new: [], persistent: [], resolved: [], suppressed: [] },
+    };
+
+    await postBbReview({ ref: { workspace: "acme", repoSlug: "api", prId: 7 }, result, failed: false, log });
+
+    const posts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST");
+    expect(posts.some((c) => String((c[1] as RequestInit).body).includes(existingFinding.id!))).toBe(false);
+    expect(posts.some((c) => String((c[1] as RequestInit).body).includes(newFinding.id!))).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/posted 1 inline comment.*skipped 1 duplicate/));
+  });
+});
+
 describe("Bitbucket comment formatting", () => {
   it("renders severity, category, title, body and the dedupe marker", () => {
     const body = formatBbCommentBody(finding);

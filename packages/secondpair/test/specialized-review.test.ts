@@ -3,12 +3,12 @@ import { DEFAULT_CONFIG } from "../src/config.js";
 import { parseDiff } from "../src/diff/parse.js";
 import { CATEGORIES } from "../src/types.js";
 
-vi.mock("repocairn", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("repocairn")>()),
+vi.mock("../src/codemap/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/codemap/index.js")>()),
   structuredCall: vi.fn(),
 }));
 
-import { structuredCall } from "repocairn";
+import { structuredCall } from "../src/codemap/index.js";
 import { QUALITY_LENS_SYSTEM_PROMPT, SECURITY_LENS_SYSTEM_PROMPT } from "../src/llm/prompt.js";
 import { LENS_DEFINITIONS, runSpecializedReview } from "../src/specialized-review.js";
 

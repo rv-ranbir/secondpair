@@ -1,5 +1,5 @@
 import type { Octokit } from "@octokit/rest";
-import type { PrRef } from "../diff/github.js";
+import type { PrRef } from "../diff/github-ref.js";
 import { collectIdsFromBodies, embedFindingId, parseFindingId } from "../finding-id.js";
 import { embedReviewState, parseReviewState, type ReviewState } from "../review-state.js";
 import { collectWontFixIds } from "../suppress-signals.js";

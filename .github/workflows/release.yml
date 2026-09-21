@@ -34,19 +34,13 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN }}
           fetch-depth: 0
 
-      - name: Tag release if package versions were bumped
+      - name: Tag release if package version was bumped
         shell: bash
         run: |
           set -euo pipefail
-          repocairn_version="$(node -p "require('./packages/repocairn/package.json').version")"
           secondpair_version="$(node -p "require('./packages/secondpair/package.json').version")"
 
-          if [[ "$repocairn_version" != "$secondpair_version" ]]; then
-            echo "repocairn ($repocairn_version) and secondpair ($secondpair_version) versions differ; skipping auto-tag." >&2
-            exit 0
-          fi
-
-          tag="v$repocairn_version"
+          tag="v$secondpair_version"
           if git rev-parse "$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; skipping."
             exit 0
@@ -97,14 +91,10 @@ jobs:
           fi
 
           tag_version="${GITHUB_REF_NAME#v}"
-          repocairn_version="$(node -p "JSON.parse(require('node:fs').readFileSync('packages/repocairn/package.json', 'utf8')).version")"
           secondpair_version="$(node -p "JSON.parse(require('node:fs').readFileSync('packages/secondpair/package.json', 'utf8')).version")"
-          repocairn_range="$(node -p "JSON.parse(require('node:fs').readFileSync('packages/secondpair/package.json', 'utf8')).dependencies.repocairn")"
 
-          if [[ "$tag_version" != "$repocairn_version" ||
-                "$tag_version" != "$secondpair_version" ||
-                "$repocairn_range" != "^$tag_version" ]]; then
-            echo "Tag $tag_version, package versions, and secondpair repocairn range ^$tag_version must match." >&2
+          if [[ "$tag_version" != "$secondpair_version" ]]; then
+            echo "Tag $tag_version must match packages/secondpair version $secondpair_version." >&2
             exit 1
           fi
 
@@ -155,35 +145,33 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          package=secondpair
+          tarball="release-artifacts/$package-$version.tgz"
+          error_file="$(mktemp)"
+          trap 'rm -f "$error_file"' EXIT
 
-          for package in repocairn secondpair; do
-            tarball="release-artifacts/$package-$version.tgz"
-            error_file="$(mktemp)"
-            trap 'rm -f "$error_file"' EXIT
-
-            if remote_json="$(npm view "$package@$version" dist.shasum --json 2>"$error_file")"; then
-              if ! remote_shasum="$(node -e 'try { const value = JSON.parse(process.argv[1]); if (typeof value !== "string") process.exit(1); process.stdout.write(value); } catch { process.exit(1); }' "$remote_json")"; then
-                echo "npm returned malformed dist.shasum JSON for $package@$version:" >&2
-                printf '%s\n' "$remote_json" >&2
-                exit 1
-              fi
-              local_shasum="$(sha1sum "$tarball" | cut -d " " -f 1)"
-              if [[ -z "$remote_shasum" || "$remote_shasum" != "$local_shasum" ]]; then
-                echo "$package@$version exists but does not match the validated tarball." >&2
-                exit 1
-              fi
-              echo "$package=true" >> "$GITHUB_OUTPUT"
-            elif grep -qE 'E404|404 Not Found|is not in this registry' "$error_file"; then
-              echo "$package=false" >> "$GITHUB_OUTPUT"
-            else
-              echo "npm view failed for $package@$version:" >&2
-              cat "$error_file" >&2
+          if remote_json="$(npm view "$package@$version" dist.shasum --json 2>"$error_file")"; then
+            if ! remote_shasum="$(node -e 'try { const value = JSON.parse(process.argv[1]); if (typeof value !== "string") process.exit(1); process.stdout.write(value); } catch { process.exit(1); }' "$remote_json")"; then
+              echo "npm returned malformed dist.shasum JSON for $package@$version:" >&2
+              printf '%s\n' "$remote_json" >&2
               exit 1
             fi
+            local_shasum="$(sha1sum "$tarball" | cut -d " " -f 1)"
+            if [[ -z "$remote_shasum" || "$remote_shasum" != "$local_shasum" ]]; then
+              echo "$package@$version exists but does not match the validated tarball." >&2
+              exit 1
+            fi
+            echo "$package=true" >> "$GITHUB_OUTPUT"
+          elif grep -qE 'E404|404 Not Found|is not in this registry' "$error_file"; then
+            echo "$package=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm view failed for $package@$version:" >&2
+            cat "$error_file" >&2
+            exit 1
+          fi
 
-            rm -f "$error_file"
-            trap - EXIT
-          done
+          rm -f "$error_file"
+          trap - EXIT
 
       - name: Select release channel
         id: release
@@ -196,14 +184,6 @@ jobs:
             echo "dist-tag=latest" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Publish repocairn
-        if: steps.existing.outputs.repocairn != 'true'
-        run: |
-          npm publish "./release-artifacts/repocairn-${GITHUB_REF_NAME#v}.tgz" \
-            --access public --provenance --tag "${{ steps.release.outputs.dist-tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish secondpair
         if: steps.existing.outputs.secondpair != 'true'
