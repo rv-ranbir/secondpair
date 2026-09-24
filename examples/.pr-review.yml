@@ -2,7 +2,9 @@
 # Every key is optional; these are the defaults unless noted.
 
 # Fail the CI check when any finding is at or above this severity.
-fail_on: high            # critical | high | medium | low | info
+# Default is "off" (report-only, never blocks merge) — this example shows it
+# turned on. Set to "off" any time to make the merge gate optional again.
+fail_on: high            # critical | high | medium | low | info | off
 
 # Drop findings the model rated below this confidence (0..1).
 min_confidence: 0.5
@@ -50,3 +52,30 @@ redact_patterns: []
 
 # Persist finding ids marked "won't fix" to .pr-review-suppressions.yml.
 write_suppressions: false
+
+# Custom-instructions file, read if custom_instructions (above) is empty.
+# Loses to .secondpair/instructions.mdc|.md when either of those exist.
+custom_instructions_file: .pr-review-instructions.md
+
+# Above this many diff tokens, switch to a single cheaper high-level pass
+# (critical/high findings only, no parallel lenses, no self-critique) instead
+# of full per-chunk review. Set null to disable and always do a full review.
+huge_pr_token_threshold: 120000
+
+# Deterministic (non-LLM) hook/error-handling/control-flow signal detection
+# on added lines, surfaced to the model alongside the diff per chunk.
+signal_detector: true
+
+# Fan out concurrent security/correctness/quality "lens" LLM calls per chunk
+# instead of one combined call. More thorough, costs more calls. Ignored for
+# huge-PR high-level reviews (see huge_pr_token_threshold).
+parallel_agents: true
+
+# LLM-assisted merge of near-duplicate findings across lenses/chunks, on top
+# of the always-on exact-fingerprint dedup.
+semantic_dedup: true
+
+# Hard cap on diff chunks reviewed per run (token-budget chunking). Extra
+# chunks are skipped with a warning log instead of being sent/billed. Set
+# null to disable the cap.
+max_diff_chunks: 20
